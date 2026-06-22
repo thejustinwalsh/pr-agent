@@ -6,7 +6,8 @@ PR-Agent is **stateless**: there is no data volume and no backup. The only persi
 
 **Prerequisites:**
 
-- macOS with Homebrew, `git`, `gh` CLI, `jq`, `node` (for wrangler), `cloudflared`, `pandoc` installed.
+- macOS with Homebrew, `git`, `gh` CLI, `jq`, `node`, `openssl`, `cloudflared`, `pandoc` installed.
+- `wrangler` **v4+** authenticated to your Cloudflare account (`cd secrets-broker && npm install`; `npx wrangler login`). Used to deploy the broker, create the OTP KV namespace, and mint the per-provision OTP during `gen-cloud-init.sh`.
 - A Cloudflare account with `tjw.dev` as an active zone.
 - A Hetzner Cloud account.
 - The fork `thejustinwalsh/pr-agent` exists with a `production` branch.
@@ -70,20 +71,20 @@ podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0   # must pull with no login
 1. Creates the `pr-agent` tunnel and the `pr-agent.tjw.dev` DNS route (ingress → `http://localhost:3000`).
 2. Keeps `pr-agent.tjw.dev` **Access-EXEMPT** (HMAC-gated by the webhook secret) and the shared broker `secrets.tjw.dev` **Access-gated** by the `pr-agent-server` service token.
 3. Populates the five `pr-agent-*` secrets in the account Secrets Store.
-4. Deploys the shared broker Worker (serving the `pr-agent` namespace) and verifies a full fetch.
+4. Creates the `OTP_KV` namespace (Step 12a), sets its id in `wrangler.toml` + `deploy/cloud-init.vars`, then deploys the shared broker Worker (serving the `pr-agent` namespace, single-use OTP enforced, `workers_dev = false`) and verifies a full fetch with a hand-minted OTP.
 
-After it you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, and `secrets.tjw.dev/secrets/pr-agent` returning the five keys with the token.
+**Deploy the broker before provisioning the box** (Section 3): a fresh box's first boot fetches from it. After this section you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, the `OTP_KV_ID` (from `wrangler kv namespace create OTP_KV`), and `secrets.tjw.dev/secrets/pr-agent` returning the five keys for a valid OTP.
 
 ### Step 5 — Set the v4-pro context window (MANDATORY)
 
-`deepseek-v4-pro` is not in PR-Agent's built-in `MAX_TOKENS` table, so PR-Agent's `get_max_tokens()` **raises** unless `CONFIG__CUSTOM_MODEL_MAX_TOKENS` is set to a positive value. The quadlet ships a **placeholder** that you must replace with v4-pro's real context window before deploying. Edit `deploy/quadlet/pr-agent.container`:
+`deepseek-v4-pro` is not in PR-Agent's built-in `MAX_TOKENS` table, so PR-Agent's `get_max_tokens()` **raises** unless `CONFIG__CUSTOM_MODEL_MAX_TOKENS` is set to a positive value. This is already set to v4-pro's context window (1,000,000) in `deploy/quadlet/pr-agent.container`; just confirm it before deploying:
 
-```ini
-# Replace 128000 with deepseek-v4-pro's actual context window (tokens).
-Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=128000
+```bash
+grep CUSTOM_MODEL_MAX_TOKENS deploy/quadlet/pr-agent.container
+# Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000
 ```
 
-This single value covers both the primary `deepseek-v4-pro` and the `deepseek-v4-flash` fallback (neither is in the built-in table). Commit the change to `production`.
+This single value covers both the primary `deepseek-v4-pro` and the `deepseek-v4-flash` fallback (neither is in the built-in table). If you change it, commit to `production`.
 
 ---
 
@@ -91,7 +92,7 @@ This single value covers both the primary `deepseek-v4-pro` and the `deepseek-v4
 
 ### Step 6 — Render the cloud-init document
 
-On your Mac, create `deploy/cloud-init.vars` (git-ignored):
+On your Mac, create `deploy/cloud-init.vars` (git-ignored). `OTP_KV_ID` is the id from `wrangler kv namespace create OTP_KV` (Section 2, Step 12a):
 
 ```bash
 cat > deploy/cloud-init.vars <<'EOF'
@@ -99,21 +100,25 @@ CF_SERVICE_TOKEN_ID=<your CF_SERVICE_TOKEN_ID>
 CF_SERVICE_TOKEN_SECRET=<your CF_SERVICE_TOKEN_SECRET>
 FORK_REPO=thejustinwalsh/pr-agent
 TUNNEL_ID=<your TUNNEL_UUID>
+OTP_KV_ID=<your OTP_KV namespace id>
+SECRETS_NS=pr-agent
 EOF
 ```
 
-Render it:
+Render it. `gen-cloud-init.sh` **mints a single-use OTP** (`wrangler kv key put`, 1h TTL) into the `OTP_KV` namespace and injects it — so `wrangler` must be authenticated (Prerequisites) and the broker must already be deployed (Section 2). A failed mint emits no file:
 
 ```bash
 bash deploy/gen-cloud-init.sh deploy/cloud-init.vars /tmp/cloud-init-pr-agent.yaml
 ```
 
-You should see `gen-cloud-init: wrote /tmp/cloud-init-pr-agent.yaml (XXXX bytes)`. Confirm it is under 32 KiB and free of leftover placeholders (the script already asserts both, but verify):
+You should see `gen-cloud-init: wrote /tmp/cloud-init-pr-agent.yaml (XXXX bytes)` followed by `OTP valid 60 minutes — paste into Hetzner and boot within the window.` Confirm it is under 32 KiB and free of leftover placeholders (the script already asserts both, but verify):
 
 ```bash
 wc -c /tmp/cloud-init-pr-agent.yaml      # must be < 32768
 grep "__" /tmp/cloud-init-pr-agent.yaml  # must produce no output
 ```
+
+> **The OTP is valid for 1 hour.** Create the Hetzner box (Step 7) and let it boot promptly. If the box does not provision within the window, the first fetch returns 410 — just re-run this render command (it mints a fresh OTP) and re-create the box with the new cloud-init.
 
 ### Step 7 — Create the CX22 server
 
@@ -166,6 +171,12 @@ podman secret ls
 # pr-agent-webhook-secret, pr-agent-tunnel-cred
 ```
 
+The single-use OTP was consumed and removed on first fetch — confirm it's gone:
+
+```bash
+test ! -e /etc/pr-agent/otp.env && echo "OTP burned (expected)"
+```
+
 ### Step 10 — Local smoke: the webhook server answers on :3000
 
 ```bash
@@ -198,4 +209,6 @@ You should see the inbound `pull_request` event accepted (HMAC verified), the mo
 | Tunnel not connecting | `journalctl --user -u pr-agent-cloudflared` |
 | Webhook deliveries 302 to a login page | Webhook hostname is NOT Access-exempt — fix in `cloudflare.html` Part 2 |
 | Webhook deliveries rejected as bad signature | `GITHUB__WEBHOOK_SECRET` ≠ the App's webhook secret — re-fetch secrets (`recovery.html`) |
-| Secrets missing | `podman secret ls`; re-run `deploy/fetch-secrets.sh` (`recovery.html`) |
+| Secrets missing | `podman secret ls`; re-run `deploy/fetch-secrets.sh` after minting a fresh OTP (`recovery.html`) |
+| Cloud-init failed at the secrets fetch (410) | OTP expired (>1h) or already used — re-run `gen-cloud-init.sh` for a fresh OTP and re-create the box (Step 6) |
+| `gen-cloud-init.sh` fails: `OTP_KV_ID … required` / wrangler error | Set `OTP_KV_ID` in `cloud-init.vars`; ensure `wrangler` is logged in (Prerequisites) and the `OTP_KV` namespace exists |
