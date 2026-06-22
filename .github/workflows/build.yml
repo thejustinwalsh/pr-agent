@@ -1,0 +1,41 @@
+name: build-image
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "image version label, e.g. v0.30", required: true }
+      ref: { description: "git ref to build from (branch/tag/sha)", required: false, default: "production" }
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Image version label.
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      # Source to build from: release tag for release events; otherwise the ref
+      # input (defaults to `production`, which holds our deploy infra + merged app).
+      BUILD_REF: ${{ github.event.release.tag_name || inputs.ref || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_REF }}
+      - name: Apply production codemod (asserts targets)
+        run: |
+          if [ -f patches/apply.sh ]; then sh patches/apply.sh .; fi
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          target: github_app
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/pr-agent:${{ env.TAG }}
+            ghcr.io/${{ github.repository_owner }}/pr-agent:latest

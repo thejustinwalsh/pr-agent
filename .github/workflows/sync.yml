@@ -1,0 +1,39 @@
+name: sync-upstream
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC daily
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: production
+          fetch-depth: 0
+      - name: Configure git
+        run: |
+          git config user.name "pr-agent-bot"
+          git config user.email "bot@users.noreply.github.com"
+      - name: Find newest upstream release tag
+        id: up
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --repo The-PR-Agent/pr-agent --json tagName -q .tagName)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Merge upstream tag into production if new
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.up.outputs.tag }}"
+          if git tag --list | grep -qx "$TAG"; then echo "already have $TAG"; exit 0; fi
+          git remote add upstream https://github.com/The-PR-Agent/pr-agent.git
+          git fetch upstream --tags
+          # Merge will fail the job (and email) on conflict — by design.
+          git merge --no-edit "$TAG"
+          git push origin production
+          gh release create "$TAG" --repo "${{ github.repository }}" --title "$TAG" --notes "Synced from upstream $TAG"
