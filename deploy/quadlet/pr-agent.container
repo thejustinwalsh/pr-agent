@@ -12,6 +12,9 @@ Environment=CONFIG__MODEL=deepseek-v4-pro
 Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000
 Environment=CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]
 Environment=GITHUB__DEPLOYMENT_TYPE=app
+# Auto-run review tools on draft PRs too (patches/apply.sh implements this setting,
+# which upstream documents but ships unwired).
+Environment=GITHUB_APP__FEEDBACK_ON_DRAFT_PR=true
 Secret=pr-agent-deepseek-key,type=env,target=OPENAI__KEY
 Secret=pr-agent-github-app-key,type=env,target=GITHUB_APP__PRIVATE_KEY
 Secret=pr-agent-github-app-id,type=env,target=GITHUB_APP__APP_ID

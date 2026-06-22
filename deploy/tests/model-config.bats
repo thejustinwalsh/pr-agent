@@ -12,6 +12,19 @@ LITE="${REPO}/pr_agent/algo/ai_handlers/litellm_ai_handler.py"
 LOADER="${REPO}/pr_agent/config_loader.py"
 APPLY="${REPO}/patches/apply.sh"
 
+# Copy the files apply.sh asserts/patches into a fresh temp ROOT, so codemod tests
+# never mutate the committed source tree (the patch is build-time only).
+_mkroot() {
+  local r; r="$(mktemp -d)"
+  mkdir -p "$r/pr_agent/servers" "$r/pr_agent/settings" "$r/pr_agent/algo/ai_handlers"
+  cp "$PROC"   "$r/pr_agent/algo/pr_processing.py"
+  cp "$LITE"   "$r/pr_agent/algo/ai_handlers/litellm_ai_handler.py"
+  cp "$LOADER" "$r/pr_agent/config_loader.py"
+  cp "$REPO/pr_agent/servers/github_app.py" "$r/pr_agent/servers/github_app.py"
+  cp "$CONF"   "$r/pr_agent/settings/configuration.toml"
+  echo "$r"
+}
+
 @test "configuration.toml ships a [config] model default we intend to OVERRIDE (not deepseek)" {
   grep -Eq '^\s*model\s*=' "$CONF"
   # The shipped default must NOT already be deepseek-v4-pro: our pinning is the env's job,
@@ -42,16 +55,41 @@ APPLY="${REPO}/patches/apply.sh"
   grep -Fq 'dynaconf.loaders.env_loader' "$LOADER"
 }
 
-@test "the asserting codemod is a no-op success against the real source tree" {
-  run bash "$APPLY" "$REPO"
+@test "the codemod applies cleanly against a copy of the source tree" {
+  root="$(_mkroot)"
+  run bash "$APPLY" "$root"
+  rm -rf "$root"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"no source rewrite required"* ]]
+  [[ "$output" == *"no source rewrite required"* ]]           # model invariants hold (no model rewrite)
+  [[ "$output" == *"draft auto-feedback codemod applied"* ]]  # draft patch applied
 }
 
-@test "the asserting codemod is idempotent (second run also succeeds)" {
-  bash "$APPLY" "$REPO"
-  run bash "$APPLY" "$REPO"
+@test "the codemod patches the draft gate to honor feedback_on_draft_pr" {
+  root="$(_mkroot)"
+  bash "$APPLY" "$root"
+  grep -Fq 'not get_settings().github_app.feedback_on_draft_pr' "$root/pr_agent/servers/github_app.py"
+  grep -Eq '^feedback_on_draft_pr = false' "$root/pr_agent/settings/configuration.toml"
+  rm -rf "$root"
+}
+
+@test "the codemod is idempotent (second run succeeds, no double-apply)" {
+  root="$(_mkroot)"
+  bash "$APPLY" "$root"
+  run bash "$APPLY" "$root"
+  count="$(grep -c 'feedback_on_draft_pr' "$root/pr_agent/settings/configuration.toml")"
+  rm -rf "$root"
   [ "$status" -eq 0 ]
+  [ "$count" -eq 1 ]
+}
+
+@test "the codemod fails loudly if the draft gate drifts" {
+  root="$(_mkroot)"
+  grep -v 'pull_request.get("draft"' "$root/pr_agent/servers/github_app.py" > "$root/ga.tmp"
+  mv "$root/ga.tmp" "$root/pr_agent/servers/github_app.py"
+  run bash "$APPLY" "$root"
+  rm -rf "$root"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"draft gate line not found"* ]]
 }
 
 @test "the asserting codemod fails loudly if the model-selection path drifts" {

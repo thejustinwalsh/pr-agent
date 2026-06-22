@@ -14,6 +14,11 @@ WF="${BATS_TEST_DIRNAME}/../../.github/workflows"
   grep -q "cron:" "$WF/sync.yml"
   grep -q "The-PR-Agent/pr-agent" "$WF/sync.yml"
 }
+@test "sync dispatches build-image after a successful merge (GITHUB_TOKEN-safe)" {
+  grep -q "actions: write" "$WF/sync.yml"
+  grep -q "gh workflow run build-image" "$WF/sync.yml"
+  grep -q "synced=true" "$WF/sync.yml"
+}
 @test "build runs the codemod before building, on release, to the github_app target" {
   grep -q "release:" "$WF/build.yml"
   grep -q "patches/apply.sh" "$WF/build.yml"

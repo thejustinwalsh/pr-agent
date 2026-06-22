@@ -80,3 +80,40 @@ assert_present "$ROOT/pr_agent/config_loader.py" \
   "dynaconf env_loader present (env vars override TOML)"
 
 echo "apply.sh: model-forcing invariants hold; no source rewrite required (env pins the model)"
+
+# WORKSTREAM — draft PR auto-feedback.
+# Upstream DOCUMENTS github_app.feedback_on_draft_pr (docs/docs/usage-guide/
+# automations_and_usage.md) but never implemented it: the draft gate in
+# should_process_pr_logic is hardcoded to skip every draft. Patch it to honor the
+# documented setting, and add the default to configuration.toml. Idempotent;
+# fail-loud if the target line drifts upstream.
+GA="$ROOT/pr_agent/servers/github_app.py"
+OLD='    if pull_request.get("draft", True) or pull_request.get("state") != "open":'
+NEW='    if (pull_request.get("draft", True) and not get_settings().github_app.feedback_on_draft_pr) or pull_request.get("state") != "open":'
+[ -f "$GA" ] || { echo "apply.sh: missing $GA (draft patch)" >&2; exit 1; }
+if grep -Fq -- "$NEW" "$GA"; then
+  echo "apply.sh: draft gate already honors feedback_on_draft_pr (idempotent)"
+elif grep -Fq -- "$OLD" "$GA"; then
+  tmp="$(mktemp)"
+  awk -v old="$OLD" -v new="$NEW" '{ if ($0 == old) print new; else print }' "$GA" > "$tmp" && mv "$tmp" "$GA"
+  grep -Fq -- "$NEW" "$GA" || { echo "apply.sh: draft patch failed to apply to $GA" >&2; exit 1; }
+  echo "apply.sh: patched draft gate to honor github_app.feedback_on_draft_pr"
+else
+  echo "apply.sh: $GA: draft gate line not found -- upstream changed should_process_pr_logic; re-investigate the draft patch before shipping" >&2
+  exit 1
+fi
+
+# Ensure the setting exists with a default so dynaconf resolves it (env overrides).
+CFG="$ROOT/pr_agent/settings/configuration.toml"
+[ -f "$CFG" ] || { echo "apply.sh: missing $CFG (draft default)" >&2; exit 1; }
+if ! grep -Fq 'feedback_on_draft_pr' "$CFG"; then
+  if ! grep -Eq '^handle_pr_actions = ' "$CFG"; then
+    echo "apply.sh: $CFG: [github_app] handle_pr_actions anchor not found for feedback_on_draft_pr insert" >&2
+    exit 1
+  fi
+  tmp="$(mktemp)"
+  awk '1; /^handle_pr_actions = /{ print "feedback_on_draft_pr = false  # patched: enable auto tools on draft PRs (GITHUB_APP__FEEDBACK_ON_DRAFT_PR)" }' "$CFG" > "$tmp" && mv "$tmp" "$CFG"
+  echo "apply.sh: added feedback_on_draft_pr default to configuration.toml"
+fi
+
+echo "apply.sh: draft auto-feedback codemod applied"
