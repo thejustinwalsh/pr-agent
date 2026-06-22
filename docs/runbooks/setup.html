@@ -354,16 +354,15 @@ It:</p>
 (HMAC-gated by the webhook secret) and the shared broker
 <code>secrets.tjw.dev</code> <strong>Access-gated</strong> by the
 <code>pr-agent-server</code> service token.</li>
-<li>Creates the <code>OTP_KV</code> namespace (Step 12a), sets its id in
+<li>Creates the <code>OTP_KV</code> namespace (Step 12), sets its id in
 <code>wrangler.toml</code> + <code>deploy/cloud-init.vars</code>, then
 deploys the shared broker Worker (serving the <code>pr-agent</code>
 namespace, single-use OTP enforced,
 <code>workers_dev = false</code>).</li>
 <li>Sets the five <code>pr-agent</code> app secrets as <strong>Worker
 secrets</strong> with one script
-(<code>deploy/set-broker-secrets.sh</code>, Step 13a) — no Secrets
-Store, no dashboard — and verifies a full fetch with a hand-minted
-OTP.</li>
+(<code>deploy/set-broker-secrets.sh</code>, Step 14) — no Secrets Store,
+no dashboard — and verifies a full fetch with a hand-minted OTP.</li>
 </ol>
 <p><strong>Deploy the broker before provisioning the box</strong>
 (Section 3): a fresh box’s first boot fetches from it. After this
@@ -397,7 +396,7 @@ cloud-init document</h3>
 <p>On your Mac, create <code>deploy/cloud-init.vars</code>
 (git-ignored). <code>OTP_KV_ID</code> is the id from
 <code>wrangler kv namespace create OTP_KV</code> (Section 2, Step
-12a):</p>
+12):</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&gt;</span> deploy/cloud-init.vars <span class="op">&lt;&lt;&#39;EOF&#39;</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_ID=&lt;your CF_SERVICE_TOKEN_ID&gt;</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_SECRET=&lt;your CF_SERVICE_TOKEN_SECRET&gt;</span></span>

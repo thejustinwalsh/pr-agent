@@ -104,7 +104,9 @@ systemctl --user restart pr-agent.service pr-agent-cloudflared.service
 
 ## Step 3 — Re-fetch secrets
 
-Use this when the container fails with authentication errors, unset env, unresolved `podman secret` references, a rotated GitHub App key/webhook secret, or after the Secrets Store was updated. This is also the fix when **webhook deliveries are rejected as bad signatures** — that means `GITHUB__WEBHOOK_SECRET` on the box no longer matches the App's webhook secret.
+Use this when the container fails with authentication errors, unset env, or unresolved `podman secret` references. This is also the fix when **webhook deliveries are rejected as bad signatures** — that means `GITHUB__WEBHOOK_SECRET` on the box no longer matches the App's webhook secret.
+
+> **Changing a secret's value** (rotated GitHub App key, new webhook secret, etc.) is a two-step: first update it on the broker — edit `deploy/broker-secrets.vars` and run `deploy/set-broker-secrets.sh` (from your Mac) — then re-fetch on the box as below. Re-fetching alone only re-pulls whatever the broker currently holds.
 
 **Check which secrets exist:**
 
@@ -125,10 +127,13 @@ pr-agent-tunnel-cred
 **Mint a fresh OTP first.** The boot OTP is single-use and was burned (and `/etc/pr-agent/otp.env` deleted) at first boot, so re-running `fetch-secrets.sh` alone returns 410. Mint a new one (from a machine with `wrangler` auth) and write it to `otp.env` on the box:
 
 ```bash
+# On your Mac, from the repo (wrangler authenticated). --binding reads the id from
+# wrangler.toml; --remote is mandatory (kv key put defaults to local).
 OTP="$(openssl rand -hex 32)"
 HASH="$(printf %s "$OTP" | openssl dgst -sha256 -hex | sed 's/^.*= *//')"
-npx wrangler kv key put --namespace-id="$OTP_KV_ID" "$HASH" pr-agent --ttl 3600
-# on the box:
+( cd secrets-broker && npx wrangler kv key put --binding OTP_KV "$HASH" pr-agent --ttl 3600 --remote )
+
+# Then, on the box, write the raw OTP for fetch-secrets.sh to consume:
 printf 'SECRETS_OTP=%s\n' "$OTP" | sudo tee /etc/pr-agent/otp.env >/dev/null
 sudo chown pragent:pragent /etc/pr-agent/otp.env && sudo chmod 600 /etc/pr-agent/otp.env
 ```
@@ -144,7 +149,7 @@ sudo bash -c '. /etc/pr-agent/cf-service-token.env; su - pragent -c "
 "'
 ```
 
-You should see `[fetch-secrets] podman secrets created`. The multi-line GitHub App PEM rides through as a JSON string and is decoded back to real newlines by `jq -er` before `podman secret create` stores it — no re-encoding, so the key arrives in the container intact.
+You should see `[fetch-secrets] podman secrets created; OTP consumed`. The GitHub App PEM rides through as single-line base64 and is decoded with `openssl base64 -d -A` back to the real multi-line key before `podman secret create` stores it, so the key arrives in the container intact. `fetch-secrets.sh` deletes `otp.env` on success.
 
 **Broker unreachable?** Fall back to manual bootstrap — it bypasses the broker entirely, so it needs **no OTP**. It reads the multi-line PEM straight from the downloaded file (it cannot be typed at a prompt) and prompts for the rest, none echoed:
 

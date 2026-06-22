@@ -17,8 +17,10 @@ WRANGLER="${WRANGLER:-wrangler}"
 OTP="$(openssl rand -hex 32)"
 HASH="$(printf %s "$OTP" | openssl dgst -sha256 -hex | sed 's/^.*= *//')"
 ( set +x
-  "$WRANGLER" kv key put --namespace-id="$OTP_KV_ID" "$HASH" "$SECRETS_NS" --ttl 3600 >/dev/null
-  got="$("$WRANGLER" kv key get --namespace-id="$OTP_KV_ID" "$HASH")"
+  # --remote is REQUIRED: kv key put defaults to LOCAL storage, which the deployed
+  # broker cannot read — the OTP would silently never resolve and every boot 410s.
+  "$WRANGLER" kv key put --namespace-id="$OTP_KV_ID" "$HASH" "$SECRETS_NS" --ttl 3600 --remote >/dev/null
+  got="$("$WRANGLER" kv key get --namespace-id="$OTP_KV_ID" "$HASH" --remote)"
   [ "$got" = "$SECRETS_NS" ] || { echo "gen-cloud-init: KV read-back mismatch" >&2; exit 1; }
 )
 

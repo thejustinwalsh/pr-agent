@@ -2,14 +2,14 @@
 
 **Goal:** Register a **GitHub App** (not an OAuth App) that delivers `pull_request` and `issue_comment` webhooks to the self-hosted PR-Agent server at `https://pr-agent.tjw.dev/api/v1/github_webhooks`, then install it on the repositories you want reviewed. PR-Agent authenticates back to GitHub as the App (JWT signed with the App's private key) and verifies inbound webhooks with the App's HMAC webhook secret.
 
-This produces four secret/identity values that the rest of the deployment consumes through the Cloudflare Secrets Store:
+This produces four secret/identity values. You put them into `deploy/broker-secrets.vars`, and `deploy/set-broker-secrets.sh` sets them as the broker's Worker secrets (`cloudflare.html` Part 3–4); at boot the box fetches them and the quadlet maps each to a container env target:
 
-| GitHub App field | Secrets Store name | Container env target (dynaconf) |
+| GitHub App field | `broker-secrets.vars` key | Container env target (dynaconf) |
 |---|---|---|
-| App **ID** (numeric) | `pr-agent-github-app-id` | `GITHUB_APP__APP_ID` |
-| **Private key** (PEM) | `pr-agent-github-app-key` | `GITHUB_APP__PRIVATE_KEY` |
-| **Webhook secret** (HMAC) | `pr-agent-webhook-secret` | `GITHUB__WEBHOOK_SECRET` |
-| DeepSeek API key | `pr-agent-deepseek-key` | `OPENAI__KEY` |
+| App **ID** (numeric) | `GITHUB_APP_ID` | `GITHUB_APP__APP_ID` |
+| **Private key** (PEM) | `GITHUB_APP_PRIVATE_KEY_FILE` (path to the `.pem`) | `GITHUB_APP__PRIVATE_KEY` |
+| **Webhook secret** (HMAC) | `GITHUB_WEBHOOK_SECRET` | `GITHUB__WEBHOOK_SECRET` |
+| DeepSeek API key | `DEEPSEEK_API_KEY` | `OPENAI__KEY` |
 
 **Prerequisites:**
 
@@ -56,9 +56,9 @@ Generate the webhook secret on your Mac and keep it:
 openssl rand -hex 32
 ```
 
-Paste that value into **Webhook secret**. This same value becomes the `pr-agent-webhook-secret` entry in the Secrets Store, injected into the container as `GITHUB__WEBHOOK_SECRET`. PR-Agent recomputes the HMAC-SHA256 of every delivery body with this secret and rejects any request whose `X-Hub-Signature-256` header does not match.
+Paste that value into **Webhook secret**. This same value becomes the `GITHUB_WEBHOOK_SECRET` entry in `deploy/broker-secrets.vars` (set as a Worker secret), injected into the container as `GITHUB__WEBHOOK_SECRET`. PR-Agent recomputes the HMAC-SHA256 of every delivery body with this secret and rejects any request whose `X-Hub-Signature-256` header does not match.
 
-> **The webhook secret is the only gate on the webhook hostname.** `pr-agent.tjw.dev` is **Access-EXEMPT** — GitHub's servers cannot complete a Cloudflare Access login, so Access is bypassed for that hostname (see `cloudflare.html`). Authenticity of every inbound request therefore rests entirely on this HMAC secret. Treat it like a production credential: long, random, stored only in the Secrets Store and your password manager, never committed.
+> **The webhook secret is the only gate on the webhook hostname.** `pr-agent.tjw.dev` is **Access-EXEMPT** — GitHub's servers cannot complete a Cloudflare Access login, so Access is bypassed for that hostname (see `cloudflare.html`). Authenticity of every inbound request therefore rests entirely on this HMAC secret. Treat it like a production credential: long, random, set only via the broker (`deploy/broker-secrets.vars`) and kept in your password manager, never committed.
 
 **Step 4 — Permissions.** Under **Permissions > Repository permissions**, set:
 
@@ -94,10 +94,10 @@ These two cover PR-Agent's core flows. If you intend to use PR-level review comm
 
 This PEM becomes the `pr-agent-github-app-key` secret → `GITHUB_APP__PRIVATE_KEY`. It is **multi-line**, which matters for how it is stored and injected:
 
-- The PEM is stored as a **Worker secret** on the broker (not the Secrets Store — a base64 RSA-2048 key is ~2.2 KB, over the Store's 1024-char cap). You do not run `wrangler` by hand: just point `deploy/broker-secrets.vars` at the downloaded file — `GITHUB_APP_PRIVATE_KEY_FILE=~/Downloads/pr-agent.<date>.private-key.pem` — and `deploy/set-broker-secrets.sh` (cloudflare runbook Step 13a) base64-encodes it and sets it for you. `fetch-secrets.sh` on the box decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact key.
+- The PEM is stored as a **Worker secret** on the broker (not the Secrets Store — a base64 RSA-2048 key is ~2.2 KB, over the Store's 1024-char cap). You do not run `wrangler` by hand: just point `deploy/broker-secrets.vars` at the downloaded file — `GITHUB_APP_PRIVATE_KEY_FILE=~/Downloads/pr-agent.<date>.private-key.pem` — and `deploy/set-broker-secrets.sh` (cloudflare runbook Step 14) base64-encodes it and sets it for you. `fetch-secrets.sh` on the box decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact key.
 - If you are bootstrapping by hand (broker unreachable), do **not** base64-encode and do **not** paste at a prompt. Pass the downloaded file to `deploy/bootstrap-secrets.sh /path/to/pr-agent.<date>.private-key.pem`; it feeds the raw `.pem` straight into `podman secret create` so newlines survive.
 
-> **Never commit the PEM.** It is the App's identity; anyone holding it can act as PR-Agent against every repo the App is installed on. Store it in the Secrets Store and your password manager only.
+> **Never commit the PEM.** It is the App's identity; anyone holding it can act as PR-Agent against every repo the App is installed on. Point `broker-secrets.vars` at the file (which stays out of git), set it as a Worker secret, and keep the `.pem` in your password manager only.
 
 **Step 9 — Webhook secret (already have it).** The value from Step 3 is the third secret, `pr-agent-webhook-secret` → `GITHUB__WEBHOOK_SECRET`. Confirm the exact bytes match what you pasted into GitHub; a one-character drift means every delivery is rejected as a bad signature.
 
@@ -123,13 +123,13 @@ You should see the App listed under the account's **Settings > Applications > In
 
 ## What goes where (summary)
 
-After this runbook you hold three GitHub-issued values plus your DeepSeek key. Carry them into the Secrets Store exactly as named — the container env targets are fixed by the quadlet (`deploy/quadlet/pr-agent.container`) and `deploy/config.env`:
+After this runbook you hold three GitHub-issued values plus your DeepSeek key. Put them into `deploy/broker-secrets.vars` exactly as named — `set-broker-secrets.sh` sets them as the broker's Worker secrets, and the container env targets are fixed by the quadlet (`deploy/quadlet/pr-agent.container`) and `deploy/config.env`:
 
-| You have | Store as | Becomes env |
+| You have | `broker-secrets.vars` key | Becomes env |
 |---|---|---|
-| App ID (number) | `pr-agent-github-app-id` | `GITHUB_APP__APP_ID` |
-| Private key (.pem) | `pr-agent-github-app-key` | `GITHUB_APP__PRIVATE_KEY` |
-| Webhook secret (hex) | `pr-agent-webhook-secret` | `GITHUB__WEBHOOK_SECRET` |
-| DeepSeek API key | `pr-agent-deepseek-key` | `OPENAI__KEY` |
+| App ID (number) | `GITHUB_APP_ID` | `GITHUB_APP__APP_ID` |
+| Private key (.pem) | `GITHUB_APP_PRIVATE_KEY_FILE` (path) | `GITHUB_APP__PRIVATE_KEY` |
+| Webhook secret (hex) | `GITHUB_WEBHOOK_SECRET` | `GITHUB__WEBHOOK_SECRET` |
+| DeepSeek API key | `DEEPSEEK_API_KEY` | `OPENAI__KEY` |
 
-Proceed to `cloudflare.html` to populate the Secrets Store, mark the webhook hostname Access-exempt, and deploy the broker.
+Proceed to `cloudflare.html` to set the broker's Worker secrets, mark the webhook hostname Access-exempt, and deploy the broker.

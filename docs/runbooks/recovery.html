@@ -346,11 +346,18 @@ pin one by hand:</p>
 <hr />
 <h2 id="step-3-re-fetch-secrets">Step 3 — Re-fetch secrets</h2>
 <p>Use this when the container fails with authentication errors, unset
-env, unresolved <code>podman secret</code> references, a rotated GitHub
-App key/webhook secret, or after the Secrets Store was updated. This is
-also the fix when <strong>webhook deliveries are rejected as bad
+env, or unresolved <code>podman secret</code> references. This is also
+the fix when <strong>webhook deliveries are rejected as bad
 signatures</strong> — that means <code>GITHUB__WEBHOOK_SECRET</code> on
 the box no longer matches the App’s webhook secret.</p>
+<blockquote>
+<p><strong>Changing a secret’s value</strong> (rotated GitHub App key,
+new webhook secret, etc.) is a two-step: first update it on the broker —
+edit <code>deploy/broker-secrets.vars</code> and run
+<code>deploy/set-broker-secrets.sh</code> (from your Mac) — then
+re-fetch on the box as below. Re-fetching alone only re-pulls whatever
+the broker currently holds.</p>
+</blockquote>
 <p><strong>Check which secrets exist:</strong></p>
 <div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> secret ls</span></code></pre></div>
 <p>You should see all five:</p>
@@ -364,12 +371,15 @@ and was burned (and <code>/etc/pr-agent/otp.env</code> deleted) at first
 boot, so re-running <code>fetch-secrets.sh</code> alone returns 410.
 Mint a new one (from a machine with <code>wrangler</code> auth) and
 write it to <code>otp.env</code> on the box:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv key put <span class="at">--namespace-id</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$OTP_KV_ID</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># on the box:</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="bu">printf</span> <span class="st">&#39;SECRETS_OTP=%s\n&#39;</span> <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="fu">sudo</span> tee /etc/pr-agent/otp.env <span class="op">&gt;</span>/dev/null</span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown pragent:pragent /etc/pr-agent/otp.env <span class="kw">&amp;&amp;</span> <span class="fu">sudo</span> chmod 600 /etc/pr-agent/otp.env</span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># On your Mac, from the repo (wrangler authenticated). --binding reads the id from</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co"># wrangler.toml; --remote is mandatory (kv key put defaults to local).</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="kw">(</span> <span class="bu">cd</span> secrets-broker <span class="kw">&amp;&amp;</span> <span class="ex">npx</span> wrangler kv key put <span class="at">--binding</span> OTP_KV <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600 <span class="at">--remote</span> <span class="kw">)</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Then, on the box, write the raw OTP for fetch-secrets.sh to consume:</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="bu">printf</span> <span class="st">&#39;SECRETS_OTP=%s\n&#39;</span> <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="fu">sudo</span> tee /etc/pr-agent/otp.env <span class="op">&gt;</span>/dev/null</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown pragent:pragent /etc/pr-agent/otp.env <span class="kw">&amp;&amp;</span> <span class="fu">sudo</span> chmod 600 /etc/pr-agent/otp.env</span></code></pre></div>
 <p><strong>Re-run <code>fetch-secrets.sh</code></strong> (the
 service-token env lives in the root-owned file;
 <code>fetch-secrets.sh</code> sources <code>otp.env</code> itself and
@@ -380,11 +390,13 @@ deletes it on success):</p>
 <span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="st">  . /etc/pr-agent/cf-service-token.env</span></span>
 <span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="st">  ~/pr-agent/deploy/fetch-secrets.sh</span></span>
 <span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;&#39;</span></span></code></pre></div>
-<p>You should see <code>[fetch-secrets] podman secrets created</code>.
-The multi-line GitHub App PEM rides through as a JSON string and is
-decoded back to real newlines by <code>jq -er</code> before
-<code>podman secret create</code> stores it — no re-encoding, so the key
-arrives in the container intact.</p>
+<p>You should see
+<code>[fetch-secrets] podman secrets created; OTP consumed</code>. The
+GitHub App PEM rides through as single-line base64 and is decoded with
+<code>openssl base64 -d -A</code> back to the real multi-line key before
+<code>podman secret create</code> stores it, so the key arrives in the
+container intact. <code>fetch-secrets.sh</code> deletes
+<code>otp.env</code> on success.</p>
 <p><strong>Broker unreachable?</strong> Fall back to manual bootstrap —
 it bypasses the broker entirely, so it needs <strong>no OTP</strong>. It
 reads the multi-line PEM straight from the downloaded file (it cannot be

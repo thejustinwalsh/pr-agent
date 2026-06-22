@@ -24,3 +24,5 @@ deploy/cloudflared/config.yml
 # node deps for the secrets-broker Worker — never commit
 **/node_modules/
 secrets-broker/node_modules/
+# wrangler local state (KV cache, logs) — never commit
+**/.wrangler/

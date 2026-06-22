@@ -34,6 +34,13 @@ teardown() { rm -rf "$TMP"; }
   ! grep -q '__' "$OUT"
 }
 
+@test "mints to REMOTE KV (not local — the deployed broker reads remote)" {
+  run bash "$BATS_TEST_DIRNAME/../gen-cloud-init.sh" "$TMP/vars" "$OUT"
+  [ "$status" -eq 0 ]
+  grep -q 'kv key put .* --remote' "$WLOG"   # put must target remote
+  grep -q 'kv key get .* --remote' "$WLOG"   # read-back must target remote
+}
+
 @test "fails loud and emits no output when the KV put fails" {
   export WPUT_RC=1
   run bash "$BATS_TEST_DIRNAME/../gen-cloud-init.sh" "$TMP/vars" "$OUT"

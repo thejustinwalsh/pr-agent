@@ -70,8 +70,8 @@ podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0   # must pull with no login
 
 1. Creates the `pr-agent` tunnel and the `pr-agent.tjw.dev` DNS route (ingress → `http://localhost:3000`).
 2. Keeps `pr-agent.tjw.dev` **Access-EXEMPT** (HMAC-gated by the webhook secret) and the shared broker `secrets.tjw.dev` **Access-gated** by the `pr-agent-server` service token.
-3. Creates the `OTP_KV` namespace (Step 12a), sets its id in `wrangler.toml` + `deploy/cloud-init.vars`, then deploys the shared broker Worker (serving the `pr-agent` namespace, single-use OTP enforced, `workers_dev = false`).
-4. Sets the five `pr-agent` app secrets as **Worker secrets** with one script (`deploy/set-broker-secrets.sh`, Step 13a) — no Secrets Store, no dashboard — and verifies a full fetch with a hand-minted OTP.
+3. Creates the `OTP_KV` namespace (Step 12), sets its id in `wrangler.toml` + `deploy/cloud-init.vars`, then deploys the shared broker Worker (serving the `pr-agent` namespace, single-use OTP enforced, `workers_dev = false`).
+4. Sets the five `pr-agent` app secrets as **Worker secrets** with one script (`deploy/set-broker-secrets.sh`, Step 14) — no Secrets Store, no dashboard — and verifies a full fetch with a hand-minted OTP.
 
 **Deploy the broker before provisioning the box** (Section 3): a fresh box's first boot fetches from it. After this section you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, the `OTP_KV_ID` (from `wrangler kv namespace create OTP_KV`), and `secrets.tjw.dev/secrets/pr-agent` returning the five keys for a valid OTP.
 
@@ -92,7 +92,7 @@ This single value covers both the primary `deepseek-v4-pro` and the `deepseek-v4
 
 ### Step 6 — Render the cloud-init document
 
-On your Mac, create `deploy/cloud-init.vars` (git-ignored). `OTP_KV_ID` is the id from `wrangler kv namespace create OTP_KV` (Section 2, Step 12a):
+On your Mac, create `deploy/cloud-init.vars` (git-ignored). `OTP_KV_ID` is the id from `wrangler kv namespace create OTP_KV` (Section 2, Step 12):
 
 ```bash
 cat > deploy/cloud-init.vars <<'EOF'
