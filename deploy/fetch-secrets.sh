@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Fetch app secrets from the Cloudflare broker (Access service token) -> podman secrets.
+# The broker (pr-agent-secrets.tjw.dev) returns JSON; each value becomes a podman
+# secret, consumed by the quadlet as env/mount targets.
+#
+# Multi-line PEM: GITHUB_APP_PRIVATE_KEY is a multi-line PEM. It rides through the
+# broker as a JSON string (newlines as \n), jq -er decodes it back to real newlines,
+# and `printf '%s'` pipes those raw bytes straight into `podman secret create`, which
+# stores the value verbatim. The quadlet then maps it with type=env,target=...; podman
+# injects the multi-line value into the container env intact. No re-encoding anywhere.
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$HERE/config.env"
+: "${CF_SERVICE_TOKEN_ID:?service token id required}"
+: "${CF_SERVICE_TOKEN_SECRET:?service token secret required}"
+
+JSON="$(curl -fsS "https://$SECRETS_DOMAIN/secrets" \
+  -H "CF-Access-Client-Id: $CF_SERVICE_TOKEN_ID" \
+  -H "CF-Access-Client-Secret: $CF_SERVICE_TOKEN_SECRET")"
+
+put() { # podman-secret-name <- json key
+  local secret="$1" key="$2" val
+  val="$(printf '%s' "$JSON" | jq -er ".$key")"
+  printf '%s' "$val" | podman secret rm "$secret" >/dev/null 2>&1 || true
+  printf '%s' "$val" | podman secret create "$secret" - >/dev/null
+}
+put "$SECRET_DEEPSEEK"   DEEPSEEK_API_KEY
+put "$SECRET_GH_APP_KEY" GITHUB_APP_PRIVATE_KEY
+put "$SECRET_GH_APP_ID"  GITHUB_APP_ID
+put "$SECRET_WEBHOOK"    GITHUB_WEBHOOK_SECRET
+put "$SECRET_TUNNEL"     TUNNEL_CRED
+
+# No ghcr login — images are public, pulled anonymously.
+echo "[fetch-secrets] podman secrets created"
