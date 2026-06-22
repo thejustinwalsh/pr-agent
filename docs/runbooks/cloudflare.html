@@ -538,48 +538,32 @@ An unauthenticated request must be blocked:</p>
 <hr />
 <h2 id="part-5-verify-a-full-fetch-with-the-service-token">Part 5 —
 Verify a full fetch with the service token</h2>
-<p><strong>Step 16.</strong> Fetch this project’s namespace. The broker
-requires a single-use OTP <strong>and</strong> the service token.
-<code>gen-cloud-init.sh</code> mints the OTP automatically at provision
-time; to test by hand, paste the block below verbatim (fill the two
-token values from Step 8). It mints an OTP into the
-<strong>remote</strong> KV (<code>--binding OTP_KV --remote</code> reads
-the id from <code>wrangler.toml</code>, so no <code>OTP_KV_ID</code> env
-var is needed), then fetches. A second run with the same OTP returns 410
-— consume-once:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CF_SERVICE_TOKEN_ID</span><span class="op">=</span><span class="st">&#39;&lt;Client ID from Step 8&gt;&#39;</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CF_SERVICE_TOKEN_SECRET</span><span class="op">=</span><span class="st">&#39;&lt;Client Secret from Step 8&gt;&#39;</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a><span class="kw">(</span> <span class="bu">cd</span> secrets-broker <span class="kw">&amp;&amp;</span> <span class="ex">npx</span> wrangler kv key put <span class="at">--binding</span> OTP_KV <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600 <span class="at">--remote</span> <span class="kw">)</span></span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsS</span> https://secrets.tjw.dev/secrets/pr-agent <span class="dt">\</span></span>
-<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Id: </span><span class="va">$CF_SERVICE_TOKEN_ID</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Secret: </span><span class="va">$CF_SERVICE_TOKEN_SECRET</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;X-Secrets-OTP: </span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>  <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;keys&#39;</span></span></code></pre></div>
-<blockquote>
-<p><code>wrangler kv key put</code> defaults to <strong>local</strong>
-storage; the <code>--remote</code> flag is mandatory or the OTP lands
-somewhere the deployed broker can’t read it (you’d get a 410).</p>
-</blockquote>
-<p>You should see all five keys:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;DEEPSEEK_API_KEY&quot;</span><span class="ot">,</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_ID&quot;</span><span class="ot">,</span></span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_PRIVATE_KEY&quot;</span><span class="ot">,</span></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_WEBHOOK_SECRET&quot;</span><span class="ot">,</span></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;TUNNEL_CRED&quot;</span></span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div>
-<p>All five present and non-empty confirms the secrets are wired. The
-broker serves only <code>/secrets/&lt;namespace&gt;</code> for a
-registered namespace, only when Cloudflare Access has injected the
-<code>Cf-Access-Jwt-Assertion</code> header, and only for a valid unused
-OTP — which it burns on use. Any OTP failure (missing, malformed,
-expired, replayed, wrong namespace) returns a uniform 410; a different
-or unknown namespace returns 404 and never leaks another project’s
-keys.</p>
+<p><strong>Step 16.</strong> Verify the broker end to end with
+<strong>one script</strong> — no hand-typed values.
+<code>deploy/verify-broker.sh</code> reads <code>SECRETS_DOMAIN</code> /
+<code>SECRETS_NS</code> from <code>deploy/config.env</code> and the
+service token from <code>deploy/cloud-init.vars</code> (or the
+environment), mints a single-use OTP into the <strong>remote</strong> KV
+itself, fetches the bundle, and asserts all five keys are present and
+non-empty <strong>and</strong> that an immediate replay is rejected
+(consume-once):</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># If you have not created deploy/cloud-init.vars yet (setup.html Section 3),</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="co"># export the service token from Step 8 first; otherwise the script reads it:</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CF_SERVICE_TOKEN_ID</span><span class="op">=</span><span class="st">&#39;&lt;Client ID from Step 8&gt;&#39;</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CF_SERVICE_TOKEN_SECRET</span><span class="op">=</span><span class="st">&#39;&lt;Client Secret from Step 8&gt;&#39;</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> deploy/verify-broker.sh</span></code></pre></div>
+<p>Expected:</p>
+<pre><code>[verify-broker] 200 + all 5 keys present and non-empty ✓
+[verify-broker] replay rejected with 410 (consume-once) ✓
+[verify-broker] OK — broker is wired correctly</code></pre>
+<p>A non-200 means the Access service-token policy (Steps 7–9) or the
+Worker secrets (Step 14, <code>set-broker-secrets.sh</code>) aren’t in
+place yet — the script prints which to check. The broker serves only
+<code>/secrets/&lt;namespace&gt;</code> for a registered namespace, only
+behind Access, and only for a valid unused OTP, which it burns on use;
+any OTP failure is a uniform 410 and an unknown namespace is 404 (never
+leaking another project’s keys).</p>
 <hr />
 <h2 id="revocation-kill-switch">Revocation — kill switch</h2>
 <ul>

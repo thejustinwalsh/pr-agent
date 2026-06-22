@@ -186,38 +186,26 @@ curl -si https://secrets.tjw.dev/secrets/pr-agent | head -5
 
 ## Part 5 — Verify a full fetch with the service token
 
-**Step 16.** Fetch this project's namespace. The broker requires a single-use OTP **and** the service token. `gen-cloud-init.sh` mints the OTP automatically at provision time; to test by hand, paste the block below verbatim (fill the two token values from Step 8). It mints an OTP into the **remote** KV (`--binding OTP_KV --remote` reads the id from `wrangler.toml`, so no `OTP_KV_ID` env var is needed), then fetches. A second run with the same OTP returns 410 — consume-once:
+**Step 16.** Verify the broker end to end with **one script** — no hand-typed values. `deploy/verify-broker.sh` reads `SECRETS_DOMAIN` / `SECRETS_NS` from `deploy/config.env` and the service token from `deploy/cloud-init.vars` (or the environment), mints a single-use OTP into the **remote** KV itself, fetches the bundle, and asserts all five keys are present and non-empty **and** that an immediate replay is rejected (consume-once):
 
 ```bash
+# If you have not created deploy/cloud-init.vars yet (setup.html Section 3),
+# export the service token from Step 8 first; otherwise the script reads it:
 export CF_SERVICE_TOKEN_ID='<Client ID from Step 8>'
 export CF_SERVICE_TOKEN_SECRET='<Client Secret from Step 8>'
 
-OTP="$(openssl rand -hex 32)"
-HASH="$(printf %s "$OTP" | openssl dgst -sha256 -hex | sed 's/^.*= *//')"
-( cd secrets-broker && npx wrangler kv key put --binding OTP_KV "$HASH" pr-agent --ttl 3600 --remote )
-
-curl -fsS https://secrets.tjw.dev/secrets/pr-agent \
-  -H "CF-Access-Client-Id: $CF_SERVICE_TOKEN_ID" \
-  -H "CF-Access-Client-Secret: $CF_SERVICE_TOKEN_SECRET" \
-  -H "X-Secrets-OTP: $OTP" \
-  | jq 'keys'
+bash deploy/verify-broker.sh
 ```
 
-> `wrangler kv key put` defaults to **local** storage; the `--remote` flag is mandatory or the OTP lands somewhere the deployed broker can't read it (you'd get a 410).
+Expected:
 
-You should see all five keys:
-
-```json
-[
-  "DEEPSEEK_API_KEY",
-  "GITHUB_APP_ID",
-  "GITHUB_APP_PRIVATE_KEY",
-  "GITHUB_WEBHOOK_SECRET",
-  "TUNNEL_CRED"
-]
+```
+[verify-broker] 200 + all 5 keys present and non-empty ✓
+[verify-broker] replay rejected with 410 (consume-once) ✓
+[verify-broker] OK — broker is wired correctly
 ```
 
-All five present and non-empty confirms the secrets are wired. The broker serves only `/secrets/<namespace>` for a registered namespace, only when Cloudflare Access has injected the `Cf-Access-Jwt-Assertion` header, and only for a valid unused OTP — which it burns on use. Any OTP failure (missing, malformed, expired, replayed, wrong namespace) returns a uniform 410; a different or unknown namespace returns 404 and never leaks another project's keys.
+A non-200 means the Access service-token policy (Steps 7–9) or the Worker secrets (Step 14, `set-broker-secrets.sh`) aren't in place yet — the script prints which to check. The broker serves only `/secrets/<namespace>` for a registered namespace, only behind Access, and only for a valid unused OTP, which it burns on use; any OTP failure is a uniform 410 and an unknown namespace is 404 (never leaking another project's keys).
 
 ---
 
