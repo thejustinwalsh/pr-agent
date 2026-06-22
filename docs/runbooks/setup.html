@@ -373,21 +373,17 @@ section you have: <code>CF_SERVICE_TOKEN_ID</code> /
 <code>wrangler kv namespace create OTP_KV</code>), and
 <code>secrets.tjw.dev/secrets/pr-agent</code> returning the five keys
 for a valid OTP.</p>
-<h3 id="step-5-set-the-v4-pro-context-window-mandatory">Step 5 — Set the
-v4-pro context window (MANDATORY)</h3>
-<p><code>deepseek-v4-pro</code> is not in PR-Agent’s built-in
-<code>MAX_TOKENS</code> table, so PR-Agent’s
-<code>get_max_tokens()</code> <strong>raises</strong> unless
-<code>CONFIG__CUSTOM_MODEL_MAX_TOKENS</code> is set to a positive value.
-This is already set to v4-pro’s context window (1,000,000) in
-<code>deploy/quadlet/pr-agent.container</code>; just confirm it before
-deploying:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">grep</span> CUSTOM_MODEL_MAX_TOKENS deploy/quadlet/pr-agent.container</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000</span></span></code></pre></div>
-<p>This single value covers both the primary
-<code>deepseek-v4-pro</code> and the <code>deepseek-v4-flash</code>
-fallback (neither is in the built-in table). If you change it, commit to
-<code>production</code>.</p>
+<h3 id="step-5-v4-pro-context-window-already-set-no-action">Step 5 —
+v4-pro context window (already set — no action)</h3>
+<p>Nothing to do here; this is called out only so you know why an
+unlisted model works. <code>deepseek-v4-pro</code> is not in PR-Agent’s
+built-in <code>MAX_TOKENS</code> table, so <code>get_max_tokens()</code>
+would raise without <code>CONFIG__CUSTOM_MODEL_MAX_TOKENS</code>. It is
+already baked into <code>deploy/quadlet/pr-agent.container</code> at
+<code>1000000</code> (v4-pro’s context window, set during planning), and
+that single value also covers the <code>deepseek-v4-flash</code>
+fallback. Only revisit it if you switch to a different model that needs
+a different window.</p>
 <hr />
 <h2 id="section-3-hetzner-render-cloud-init-and-create-the-box">Section
 3 — Hetzner: render cloud-init and create the box</h2>
@@ -397,28 +393,28 @@ cloud-init document</h3>
 (git-ignored). <code>OTP_KV_ID</code> is the id from
 <code>wrangler kv namespace create OTP_KV</code> (Section 2, Step
 12):</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&gt;</span> deploy/cloud-init.vars <span class="op">&lt;&lt;&#39;EOF&#39;</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_ID=&lt;your CF_SERVICE_TOKEN_ID&gt;</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_SECRET=&lt;your CF_SERVICE_TOKEN_SECRET&gt;</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="st">FORK_REPO=thejustinwalsh/pr-agent</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="st">TUNNEL_ID=&lt;your TUNNEL_UUID&gt;</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="st">OTP_KV_ID=&lt;your OTP_KV namespace id&gt;</span></span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="st">SECRETS_NS=pr-agent</span></span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="op">EOF</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&gt;</span> deploy/cloud-init.vars <span class="op">&lt;&lt;&#39;EOF&#39;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_ID=&lt;your CF_SERVICE_TOKEN_ID&gt;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_SECRET=&lt;your CF_SERVICE_TOKEN_SECRET&gt;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="st">FORK_REPO=thejustinwalsh/pr-agent</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="st">TUNNEL_ID=&lt;your TUNNEL_UUID&gt;</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="st">OTP_KV_ID=&lt;your OTP_KV namespace id&gt;</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="st">SECRETS_NS=pr-agent</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="op">EOF</span></span></code></pre></div>
 <p>Render it. <code>gen-cloud-init.sh</code> <strong>mints a single-use
 OTP</strong> (<code>wrangler kv key put</code>, 1h TTL) into the
 <code>OTP_KV</code> namespace and injects it — so <code>wrangler</code>
 must be authenticated (Prerequisites) and the broker must already be
 deployed (Section 2). A failed mint emits no file:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> deploy/gen-cloud-init.sh deploy/cloud-init.vars /tmp/cloud-init-pr-agent.yaml</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> deploy/gen-cloud-init.sh deploy/cloud-init.vars /tmp/cloud-init-pr-agent.yaml</span></code></pre></div>
 <p>You should see
 <code>gen-cloud-init: wrote /tmp/cloud-init-pr-agent.yaml (XXXX bytes)</code>
 followed by
 <code>OTP valid 60 minutes — paste into Hetzner and boot within the window.</code>
 Confirm it is under 32 KiB and free of leftover placeholders (the script
 already asserts both, but verify):</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wc</span> <span class="at">-c</span> /tmp/cloud-init-pr-agent.yaml      <span class="co"># must be &lt; 32768</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">grep</span> <span class="st">&quot;__&quot;</span> /tmp/cloud-init-pr-agent.yaml  <span class="co"># must produce no output</span></span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wc</span> <span class="at">-c</span> /tmp/cloud-init-pr-agent.yaml      <span class="co"># must be &lt; 32768</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">grep</span> <span class="st">&quot;__&quot;</span> /tmp/cloud-init-pr-agent.yaml  <span class="co"># must produce no output</span></span></code></pre></div>
 <blockquote>
 <p><strong>The OTP is valid for 1 hour.</strong> Create the Hetzner box
 (Step 7) and let it boot promptly. If the box does not provision within
@@ -448,30 +444,30 @@ Firewall:     SSH is key-only + fail2ban (set by cloud-init); do NOT pin a sourc
 4 — Verify the deploy and the first webhook delivery</h2>
 <h3 id="step-8-watch-cloud-init-complete">Step 8 — Watch cloud-init
 complete</h3>
-<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> root@<span class="op">&lt;</span>server-IP<span class="op">&gt;</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /var/log/cloud-init-output.log</span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ssh</span> root@<span class="op">&lt;</span>server-IP<span class="op">&gt;</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">tail</span> <span class="at">-f</span> /var/log/cloud-init-output.log</span></code></pre></div>
 <p>Cloud-init clones the fork’s <code>production</code> branch, installs
 the quadlet units + timers, renders the cloudflared config, fetches the
 secrets, and runs the first deploy. It is done when you see
 <code>Cloud-init v. X.X finished</code>. Expect 3–5 minutes.</p>
 <h3 id="step-9-verify-the-pod-and-containers">Step 9 — Verify the pod
 and containers</h3>
-<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">su</span> <span class="at">-</span> pragent</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">XDG_RUNTIME_DIR</span><span class="op">=</span>/run/user/<span class="va">$(</span><span class="fu">id</span> <span class="at">-u</span><span class="va">)</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> status pr-agent.service pr-agent-cloudflared.service</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> ps <span class="at">--pod</span></span></code></pre></div>
+<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">su</span> <span class="at">-</span> pragent</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">XDG_RUNTIME_DIR</span><span class="op">=</span>/run/user/<span class="va">$(</span><span class="fu">id</span> <span class="at">-u</span><span class="va">)</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> status pr-agent.service pr-agent-cloudflared.service</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> ps <span class="at">--pod</span></span></code></pre></div>
 <p>You should see two containers — <code>pr-agent</code> and
 <code>pr-agent-cloudflared</code> — in the <code>pragent</code> pod,
 both <strong>active (running)</strong>. Confirm the secrets exist:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> secret ls</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="co"># pr-agent-deepseek-key, pr-agent-github-app-key, pr-agent-github-app-id,</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="co"># pr-agent-webhook-secret, pr-agent-tunnel-cred</span></span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> secret ls</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="co"># pr-agent-deepseek-key, pr-agent-github-app-key, pr-agent-github-app-id,</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="co"># pr-agent-webhook-secret, pr-agent-tunnel-cred</span></span></code></pre></div>
 <p>The single-use OTP was consumed and removed on first fetch — confirm
 it’s gone:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">test</span> ! <span class="at">-e</span> /etc/pr-agent/otp.env <span class="kw">&amp;&amp;</span> <span class="bu">echo</span> <span class="st">&quot;OTP burned (expected)&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="bu">test</span> ! <span class="at">-e</span> /etc/pr-agent/otp.env <span class="kw">&amp;&amp;</span> <span class="bu">echo</span> <span class="st">&quot;OTP burned (expected)&quot;</span></span></code></pre></div>
 <h3 id="step-10-local-smoke-the-webhook-server-answers-on-3000">Step 10
 — Local smoke: the webhook server answers on :3000</h3>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="at">-o</span> /dev/null <span class="at">-w</span> <span class="st">&#39;%{http_code}\n&#39;</span> http://localhost:3000/</span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="at">-o</span> /dev/null <span class="at">-w</span> <span class="st">&#39;%{http_code}\n&#39;</span> http://localhost:3000/</span></code></pre></div>
 <p>Any HTTP status line (200/404/405) means gunicorn/uvicorn is up and
 serving — the GitHub-App receiver has no health endpoint, so
 <em>any</em> response proves the worker is alive. <code>000</code> means
@@ -485,7 +481,7 @@ show <strong>200</strong>. Then open (or reopen) a pull request on an
 installed repo. Within a few seconds PR-Agent posts a DeepSeek
 <strong>v4-pro</strong> review comment.</p>
 <p>Watch it happen from the server:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">journalctl</span> <span class="at">--user</span> <span class="at">-u</span> pr-agent <span class="at">-f</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">journalctl</span> <span class="at">--user</span> <span class="at">-u</span> pr-agent <span class="at">-f</span></span></code></pre></div>
 <p>You should see the inbound <code>pull_request</code> event accepted
 (HMAC verified), the model call to
 <code>https://api.deepseek.com</code>, and the review posted back. That

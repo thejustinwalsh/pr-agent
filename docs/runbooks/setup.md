@@ -75,16 +75,9 @@ podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0   # must pull with no login
 
 **Deploy the broker before provisioning the box** (Section 3): a fresh box's first boot fetches from it. After this section you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, the `OTP_KV_ID` (from `wrangler kv namespace create OTP_KV`), and `secrets.tjw.dev/secrets/pr-agent` returning the five keys for a valid OTP.
 
-### Step 5 — Set the v4-pro context window (MANDATORY)
+### Step 5 — v4-pro context window (already set — no action)
 
-`deepseek-v4-pro` is not in PR-Agent's built-in `MAX_TOKENS` table, so PR-Agent's `get_max_tokens()` **raises** unless `CONFIG__CUSTOM_MODEL_MAX_TOKENS` is set to a positive value. This is already set to v4-pro's context window (1,000,000) in `deploy/quadlet/pr-agent.container`; just confirm it before deploying:
-
-```bash
-grep CUSTOM_MODEL_MAX_TOKENS deploy/quadlet/pr-agent.container
-# Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000
-```
-
-This single value covers both the primary `deepseek-v4-pro` and the `deepseek-v4-flash` fallback (neither is in the built-in table). If you change it, commit to `production`.
+Nothing to do here; this is called out only so you know why an unlisted model works. `deepseek-v4-pro` is not in PR-Agent's built-in `MAX_TOKENS` table, so `get_max_tokens()` would raise without `CONFIG__CUSTOM_MODEL_MAX_TOKENS`. It is already baked into `deploy/quadlet/pr-agent.container` at `1000000` (v4-pro's context window, set during planning), and that single value also covers the `deepseek-v4-flash` fallback. Only revisit it if you switch to a different model that needs a different window.
 
 ---
 
