@@ -71,3 +71,9 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Spec/plan:** `docs/superpowers/specs/2026-06-22-otp-single-use-secrets-fetch-design.md`, `docs/superpowers/plans/2026-06-22-otp-single-use-secrets-fetch.md`.
 - **Operator (pre-deploy):** `wrangler kv namespace create OTP_KV`; set the id in `secrets-broker/wrangler.toml` and `deploy/cloud-init.vars`; redeploy the broker; then provision. Integration tier (`make verify-cloudinit`) on the OrbStack box (required after the cloud-init change; not runnable from macOS).
 - **Revisit:** Durable Object if multi-consumer; optional Access-JWT JWKS verification; optional CF rate-limit rule on secrets.tjw.dev.
+
+## 2026-06-22 — GitHub App PEM stored as single-line base64
+- **Context:** The Cloudflare Secrets Store dashboard value field is single-line and collapses newlines, mangling the multi-line GitHub App private-key PEM on paste. The earlier "paste verbatim with real newlines" guidance only worked via the CLI, not the dashboard the runbook directs operators to.
+- **Decision:** Store `pr-agent-github-app-key` as **single-line base64** (`openssl base64 -A -in key.pem`) — dashboard-safe and JSON-safe through the broker's pass-through. `fetch-secrets.sh` decodes just that key (`put ... base64` → `openssl base64 -d -A`) back to the raw multi-line PEM before `podman secret create`. The broker is unchanged (still a dumb pass-through; consume-once logic untouched). `bootstrap-secrets.sh` is unaffected (reads the raw `.pem` file) — both paths yield an identical real-newline PEM in the container.
+- **Evidence:** secrets.bats 10/10 (base64 PEM decoded to multi-line before store; non-PEM secrets stored verbatim); shellcheck clean.
+- **Affected:** `deploy/fetch-secrets.sh`, `deploy/tests/secrets.bats`, `docs/runbooks/{github-app,cloudflare}.{md,html}`.

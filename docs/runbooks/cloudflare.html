@@ -454,8 +454,8 @@ should match the <code>store_id</code> already set in
 </tr>
 <tr>
 <td><code>pr-agent-github-app-key</code></td>
-<td>GitHub App private-key PEM, <strong>pasted verbatim with real line
-breaks</strong> (not <code>\n</code>-escaped)</td>
+<td>GitHub App private-key PEM, <strong>base64-encoded single
+line</strong> (<code>openssl base64 -A -in key.pem</code>)</td>
 <td><code>github-app.html</code> Step 8 →
 <code>GITHUB_APP__PRIVATE_KEY</code></td>
 </tr>
@@ -479,20 +479,22 @@ breaks</strong> (not <code>\n</code>-escaped)</td>
 </tbody>
 </table>
 <blockquote>
-<p><strong>The PEM is multi-line.</strong> Store it with its
-<strong>real line breaks</strong> (paste the raw file; do not pre-escape
-to a single <code>\n</code> line). The broker JSON-encodes it on the
-wire — real newlines become <code>\n</code> automatically — and
-<code>fetch-secrets.sh</code> decodes them back with <code>jq -er</code>
-before <code>podman secret create</code> stores the raw bytes.
-Pre-escaping breaks it (it decodes to literal backslash-<code>n</code>).
-Verify with
-<code>diff &lt;(jq -Rs . &lt; key.pem | jq -er .) key.pem</code>. There
-is no AES <code>ENCRYPTION_KEY</code> here — PR-Agent is stateless and
-keeps no database, so there is nothing to encrypt and no never-rotate
-key to guard. All five of these secrets are rotatable: change the value
-in the store, re-run <code>fetch-secrets.sh</code>, restart the
-container.</p>
+<p><strong>The PEM is multi-line — store it as single-line
+base64.</strong> The dashboard’s value field is single-line and would
+mangle a raw multi-line paste, so encode it:
+<code>openssl base64 -A -in pr-agent.&lt;date&gt;.private-key.pem | pbcopy</code>,
+then paste. <code>fetch-secrets.sh</code> decodes it
+(<code>openssl base64 -d -A</code>) back to the real PEM before
+<code>podman secret create</code>. There is no AES
+<code>ENCRYPTION_KEY</code> here — PR-Agent is stateless, so nothing to
+encrypt and no never-rotate key to guard. All five secrets are
+rotatable: change the value in the store, re-run
+<code>fetch-secrets.sh</code> (with a fresh OTP), restart the container.
+There is no AES <code>ENCRYPTION_KEY</code> here — PR-Agent is stateless
+and keeps no database, so there is nothing to encrypt and no
+never-rotate key to guard. All five of these secrets are rotatable:
+change the value in the store, re-run <code>fetch-secrets.sh</code>,
+restart the container.</p>
 </blockquote>
 <hr />
 <h2 id="part-4-deploy-the-shared-broker-worker">Part 4 — Deploy the

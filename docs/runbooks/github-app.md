@@ -94,13 +94,14 @@ These two cover PR-Agent's core flows. If you intend to use PR-level review comm
 
 This PEM becomes the `pr-agent-github-app-key` secret → `GITHUB_APP__PRIVATE_KEY`. It is **multi-line**, which matters for how it is stored and injected:
 
-- In the **Secrets Store**, paste the PEM **verbatim, with its real line breaks** — do **not** convert it to a single `\n`-escaped line. The value field is multi-line; paste the whole `-----BEGIN…-----END-----` block as-is. On macOS: `pbcopy < pr-agent.<date>.private-key.pem`, then paste. The broker JSON-encodes it on the wire (real newlines become `\n` automatically via `Response.json`), `fetch-secrets.sh` decodes them back with `jq -er`, and `podman secret create` stores the raw bytes. The quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact multi-line key. If you pre-escape it to literal `\n`, it decodes to a single broken line and JWT signing fails. Verify the round-trip before trusting it:
+- In the **Secrets Store**, store the PEM **base64-encoded as a single line**. The dashboard's secret-value field is single-line and collapses real newlines, so a raw multi-line paste corrupts the key — base64 sidesteps that entirely (and is JSON-safe through the broker). Encode and copy in one step, then paste as the value for `pr-agent-github-app-key`:
 
   ```bash
-  diff <(jq -Rs . < pr-agent.<date>.private-key.pem | jq -er .) pr-agent.<date>.private-key.pem
-  # no output (or only a trailing-newline diff) = the stored value will decode to a valid PEM
+  openssl base64 -A -in pr-agent.<date>.private-key.pem | pbcopy
   ```
-- If you are bootstrapping by hand (broker unreachable), do **not** try to paste a multi-line key at a prompt. Pass the downloaded file to `deploy/bootstrap-secrets.sh /path/to/pr-agent.<date>.private-key.pem`; it feeds the file straight into `podman secret create` so newlines survive.
+
+  `fetch-secrets.sh` decodes it back to the real multi-line PEM (`openssl base64 -d -A`) before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact key. (Encode → decode is reversible and lossless; verify with `openssl base64 -A -in key.pem | openssl base64 -d -A | diff - key.pem`.)
+- If you are bootstrapping by hand (broker unreachable), do **not** base64-encode and do **not** paste at a prompt. Pass the downloaded file to `deploy/bootstrap-secrets.sh /path/to/pr-agent.<date>.private-key.pem`; it feeds the raw `.pem` straight into `podman secret create` so newlines survive.
 
 > **Never commit the PEM.** It is the App's identity; anyone holding it can act as PR-Agent against every repo the App is installed on. Store it in the Secrets Store and your password manager only.
 
