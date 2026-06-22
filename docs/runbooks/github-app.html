@@ -339,7 +339,21 @@ App, use
 instead.</p>
 <p><strong>Step 2.</strong> Fill in the identity fields:</p>
 <pre><code>GitHub App name:  PR-Agent (tjw)
-Homepage URL:     https://pr-agent.tjw.dev</code></pre>
+Homepage URL:     https://pr-agent.tjw.dev
+Callback URL:     (leave blank)
+Setup URL:        (leave blank)</code></pre>
+<blockquote>
+<p><strong>No Callback URL, no user authorization.</strong> The Callback
+URL and “Request user authorization (OAuth) during installation” only
+apply to user-OAuth (“Login with GitHub”) flows, where the app acts
+<em>as a logged-in user</em>. PR-Agent never does that — it
+authenticates as the App (JWT from the private key) and acts via
+installation tokens, and its server exposes no OAuth callback route
+(only the webhook routes). Leave the Callback URL blank and leave
+<strong>“Request user authorization (OAuth) during installation”
+unchecked</strong>. The only URL that matters is the Webhook URL
+below.</p>
+</blockquote>
 <p><strong>Step 3 — Webhook.</strong> This is the load-bearing part.
 Set:</p>
 <pre><code>Webhook:          ☑ Active
