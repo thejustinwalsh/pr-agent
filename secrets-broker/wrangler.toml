@@ -19,15 +19,15 @@ workers_dev = false
 # To add a future project: register its bundle in src/index.ts and add its
 # <project>-* secrets as bindings here (use distinct binding names per namespace).
 
+# GITHUB_APP_PRIVATE_KEY is NOT here: a base64 RSA-2048 PEM (~2.2 KB) exceeds the
+# Secrets Store's 1024-char value limit. It is a Worker secret instead (set with
+# `wrangler secret put GITHUB_APP_PRIVATE_KEY` — base64 value), which the broker
+# reads as a plain string binding (resolve() handles string | Secrets Store object).
+
 [[secrets_store_secrets]]
 binding = "DEEPSEEK_API_KEY"
 store_id = "a82a58437ef14b80bcba87a7d5589377"
 secret_name = "pr-agent-deepseek-key"
-
-[[secrets_store_secrets]]
-binding = "GITHUB_APP_PRIVATE_KEY"
-store_id = "a82a58437ef14b80bcba87a7d5589377"
-secret_name = "pr-agent-github-app-key"
 
 [[secrets_store_secrets]]
 binding = "GITHUB_APP_ID"

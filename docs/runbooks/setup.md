@@ -70,7 +70,7 @@ podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0   # must pull with no login
 
 1. Creates the `pr-agent` tunnel and the `pr-agent.tjw.dev` DNS route (ingress → `http://localhost:3000`).
 2. Keeps `pr-agent.tjw.dev` **Access-EXEMPT** (HMAC-gated by the webhook secret) and the shared broker `secrets.tjw.dev` **Access-gated** by the `pr-agent-server` service token.
-3. Populates the five `pr-agent-*` secrets in the account Secrets Store.
+3. Populates the four small `pr-agent-*` secrets in the account Secrets Store, and sets the GitHub App PEM as a **Worker secret** (it exceeds the Store's 1024-char limit).
 4. Creates the `OTP_KV` namespace (Step 12a), sets its id in `wrangler.toml` + `deploy/cloud-init.vars`, then deploys the shared broker Worker (serving the `pr-agent` namespace, single-use OTP enforced, `workers_dev = false`) and verifies a full fetch with a hand-minted OTP.
 
 **Deploy the broker before provisioning the box** (Section 3): a fresh box's first boot fetches from it. After this section you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, the `OTP_KV_ID` (from `wrangler kv namespace create OTP_KV`), and `secrets.tjw.dev/secrets/pr-agent` returning the five keys for a valid OTP.

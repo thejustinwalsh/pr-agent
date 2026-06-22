@@ -19,7 +19,9 @@ interface OtpKv {
 }
 
 export interface Env {
-  // pr-agent namespace.
+  // pr-agent namespace. Most are Secrets Store bindings (objects); the PEM is a
+  // plain Worker secret (string) because it exceeds the Secrets Store size limit —
+  // resolve() handles both. See wrangler.toml.
   DEEPSEEK_API_KEY: SecretsBinding;
   GITHUB_APP_PRIVATE_KEY: SecretsBinding;
   GITHUB_APP_ID: SecretsBinding;

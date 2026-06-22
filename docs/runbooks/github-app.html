@@ -426,19 +426,19 @@ and delete the old.</p>
 <code>GITHUB_APP__PRIVATE_KEY</code>. It is <strong>multi-line</strong>,
 which matters for how it is stored and injected:</p>
 <ul>
-<li><p>In the <strong>Secrets Store</strong>, store the PEM
-<strong>base64-encoded as a single line</strong>. The dashboard’s
-secret-value field is single-line and collapses real newlines, so a raw
-multi-line paste corrupts the key — base64 sidesteps that entirely (and
-is JSON-safe through the broker). Encode and copy in one step, then
-paste as the value for <code>pr-agent-github-app-key</code>:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">openssl</span> base64 <span class="at">-A</span> <span class="at">-in</span> pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem <span class="kw">|</span> <span class="ex">pbcopy</span></span></code></pre></div>
+<li><p>The PEM does <strong>not</strong> go in the Secrets Store — a
+base64 RSA-2048 key (~2.2 KB) exceeds the Store’s 1024-char value limit.
+Store it as a <strong>Worker secret</strong> on the broker
+(<code>cloudflare.html</code> Step 11a), base64-encoded so it stays
+single-line and JSON-safe through the broker. From
+<code>secrets-broker/</code>, after the Worker is deployed, pipe it in
+(so it never lands in your shell history or <code>ps</code>):</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">openssl</span> base64 <span class="at">-A</span> <span class="at">-in</span> pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem <span class="kw">|</span> <span class="ex">npx</span> wrangler secret put GITHUB_APP_PRIVATE_KEY</span></code></pre></div>
 <p><code>fetch-secrets.sh</code> decodes it back to the real multi-line
 PEM (<code>openssl base64 -d -A</code>) before
 <code>podman secret create</code>, and the quadlet maps it
 <code>type=env,target=GITHUB_APP__PRIVATE_KEY</code>, so the container
-sees the intact key. (Encode → decode is reversible and lossless; verify
-with
+sees the intact key. (Encode → decode is lossless; verify with
 <code>openssl base64 -A -in key.pem | openssl base64 -d -A | diff - key.pem</code>.)</p></li>
 <li><p>If you are bootstrapping by hand (broker unreachable), do
 <strong>not</strong> base64-encode and do <strong>not</strong> paste at

@@ -77,3 +77,10 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Decision:** Store `pr-agent-github-app-key` as **single-line base64** (`openssl base64 -A -in key.pem`) — dashboard-safe and JSON-safe through the broker's pass-through. `fetch-secrets.sh` decodes just that key (`put ... base64` → `openssl base64 -d -A`) back to the raw multi-line PEM before `podman secret create`. The broker is unchanged (still a dumb pass-through; consume-once logic untouched). `bootstrap-secrets.sh` is unaffected (reads the raw `.pem` file) — both paths yield an identical real-newline PEM in the container.
 - **Evidence:** secrets.bats 10/10 (base64 PEM decoded to multi-line before store; non-PEM secrets stored verbatim); shellcheck clean.
 - **Affected:** `deploy/fetch-secrets.sh`, `deploy/tests/secrets.bats`, `docs/runbooks/{github-app,cloudflare}.{md,html}`.
+
+## 2026-06-22 — GitHub App PEM is a Worker secret, not a Secrets Store secret
+- **Context:** The Cloudflare Secrets Store caps a secret **value at 1024 chars**. A base64 RSA-2048 GitHub App PEM is ~2272 chars (raw PEM ~1704), so it does not fit — base64 alone (the prior fix) did not solve it.
+- **Decision:** Store `GITHUB_APP_PRIVATE_KEY` as a **Worker secret** on the broker (`wrangler secret put`, ~5 KB limit), still base64-encoded. The broker reads it as a plain string binding — `resolve()` already handles `string | SecretsStoreSecret`, so **no broker code change**. The other four small secrets stay in the Secrets Store. `fetch-secrets.sh` is unchanged (still base64-decodes that key).
+- **Ordering:** `wrangler secret put` requires the Worker to exist, so it runs **after** `wrangler deploy` (runbook Step 13a). The four Store secrets must exist **before** deploy (they're `secrets_store_secrets` bindings).
+- **Evidence:** broker vitest 8/8 (PEM stubbed as a string binding — exactly the Worker-secret shape); wrangler 4 dry-run lists 4 Store secrets + OTP_KV, PEM absent (runtime Worker secret); secrets.bats 10/10 unchanged.
+- **Affected:** `secrets-broker/{wrangler.toml,src/index.ts (comment only)}`, `docs/runbooks/{cloudflare,github-app,setup}.{md,html}`.

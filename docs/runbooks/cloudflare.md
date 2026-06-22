@@ -125,17 +125,18 @@ Store them in your password manager. They are supplied to `deploy/gen-cloud-init
 
 **Step 10.** Navigate to **Workers & Pages > Secrets Store** and record the **Store ID** (dashboard, or `npx wrangler secrets-store store list`). It should match the `store_id` already set in `secrets-broker/wrangler.toml`.
 
-**Step 11.** Add the five secrets (names from `deploy/config.env`):
+**Step 11.** Add the **four** small secrets via the dashboard (names from `deploy/config.env`). The GitHub App PEM is **not** here — it exceeds the Store's 1024-char value limit and goes in as a Worker secret in Step 11a.
 
 | Secret name | Value | Source |
 |---|---|---|
 | `pr-agent-deepseek-key` | DeepSeek API key | DeepSeek dashboard → `OPENAI__KEY` |
-| `pr-agent-github-app-key` | GitHub App private-key PEM, **base64-encoded single line** (`openssl base64 -A -in key.pem`) | `github-app.html` Step 8 → `GITHUB_APP__PRIVATE_KEY` |
 | `pr-agent-github-app-id` | GitHub App ID (number) | `github-app.html` Step 7 → `GITHUB_APP__APP_ID` |
 | `pr-agent-webhook-secret` | Webhook HMAC secret | `github-app.html` Step 3 → `GITHUB__WEBHOOK_SECRET` |
 | `pr-agent-tunnel-cred` | Tunnel credential JSON (one line) | Step 3 above → cloudflared mount |
 
-> **The PEM is multi-line — store it as single-line base64.** The dashboard's value field is single-line and would mangle a raw multi-line paste, so encode it: `openssl base64 -A -in pr-agent.<date>.private-key.pem | pbcopy`, then paste. `fetch-secrets.sh` decodes it (`openssl base64 -d -A`) back to the real PEM before `podman secret create`. There is no AES `ENCRYPTION_KEY` here — PR-Agent is stateless, so nothing to encrypt and no never-rotate key to guard. All five secrets are rotatable: change the value in the store, re-run `fetch-secrets.sh` (with a fresh OTP), restart the container. There is no AES `ENCRYPTION_KEY` here — PR-Agent is stateless and keeps no database, so there is nothing to encrypt and no never-rotate key to guard. All five of these secrets are rotatable: change the value in the store, re-run `fetch-secrets.sh`, restart the container.
+> The GitHub App PEM is **not** a Store secret (it exceeds the 1024-char cap) — it is set as a **Worker secret** *after* the broker is deployed, in **Step 13a** below.
+
+> **No AES `ENCRYPTION_KEY` here** — PR-Agent is stateless and keeps no database, so there is nothing to encrypt and no never-rotate key to guard. All five secrets are rotatable: change the value (Store dashboard for the four; `wrangler secret put` for the PEM), re-run `fetch-secrets.sh` (with a fresh OTP), restart the container.
 
 ---
 
@@ -163,6 +164,14 @@ cd secrets-broker
 npm install
 npx wrangler deploy
 ```
+
+**Step 13a — Set the GitHub App PEM as a Worker secret.** Now that the Worker exists, set the PEM (too large for the Secrets Store) as a Worker secret, base64-encoded and **piped** so it never lands in shell history or `ps`:
+
+```bash
+openssl base64 -A -in pr-agent.<date>.private-key.pem | npx wrangler secret put GITHUB_APP_PRIVATE_KEY
+```
+
+The broker reads it as a plain string (no code change), and `fetch-secrets.sh` decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`. Confirm it's set: `npx wrangler secret list` shows `GITHUB_APP_PRIVATE_KEY`.
 
 **Step 14 — Confirm Access is enforced on the broker.** An unauthenticated request must be blocked:
 
