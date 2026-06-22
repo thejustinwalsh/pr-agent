@@ -171,11 +171,13 @@ test ! -e /etc/pr-agent/otp.env && echo "OTP burned (expected)"
 
 ### Step 10 — Local smoke: the webhook server answers on :3000
 
+The pod does **not** publish `:3000` to the host (only the in-pod cloudflared needs it), so a host `curl localhost:3000` returns `000` even when the app is healthy. Check it **inside the pod** instead — the app container has Python:
+
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/
+podman exec pr-agent python -c "import urllib.request as u; print(u.urlopen('http://localhost:3000/', timeout=5).status)"
 ```
 
-Any HTTP status line (200/404/405) means gunicorn/uvicorn is up and serving — the GitHub-App receiver has no health endpoint, so *any* response proves the worker is alive. `000` means nothing is listening; check `journalctl --user -u pr-agent -n 100`.
+Expect `200` (the GitHub-App root returns `{"status":"ok"}`). An error or hang means the app isn't serving; check `journalctl --user -u pr-agent -n 100`. The end-to-end proof is the external check — `curl -si https://pr-agent.tjw.dev/` from anywhere should return `200` (app reachable through the tunnel).
 
 ### Step 11 — First webhook delivery from GitHub
 

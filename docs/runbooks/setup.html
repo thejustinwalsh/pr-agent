@@ -466,12 +466,18 @@ it’s gone:</p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="bu">test</span> ! <span class="at">-e</span> /etc/pr-agent/otp.env <span class="kw">&amp;&amp;</span> <span class="bu">echo</span> <span class="st">&quot;OTP burned (expected)&quot;</span></span></code></pre></div>
 <h3 id="step-10-local-smoke-the-webhook-server-answers-on-3000">Step 10
 — Local smoke: the webhook server answers on :3000</h3>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="at">-o</span> /dev/null <span class="at">-w</span> <span class="st">&#39;%{http_code}\n&#39;</span> http://localhost:3000/</span></code></pre></div>
-<p>Any HTTP status line (200/404/405) means gunicorn/uvicorn is up and
-serving — the GitHub-App receiver has no health endpoint, so
-<em>any</em> response proves the worker is alive. <code>000</code> means
-nothing is listening; check
-<code>journalctl --user -u pr-agent -n 100</code>.</p>
+<p>The pod does <strong>not</strong> publish <code>:3000</code> to the
+host (only the in-pod cloudflared needs it), so a host
+<code>curl localhost:3000</code> returns <code>000</code> even when the
+app is healthy. Check it <strong>inside the pod</strong> instead — the
+app container has Python:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> exec pr-agent python <span class="at">-c</span> <span class="st">&quot;import urllib.request as u; print(u.urlopen(&#39;http://localhost:3000/&#39;, timeout=5).status)&quot;</span></span></code></pre></div>
+<p>Expect <code>200</code> (the GitHub-App root returns
+<code>{&quot;status&quot;:&quot;ok&quot;}</code>). An error or hang means the app isn’t
+serving; check <code>journalctl --user -u pr-agent -n 100</code>. The
+end-to-end proof is the external check —
+<code>curl -si https://pr-agent.tjw.dev/</code> from anywhere should
+return <code>200</code> (app reachable through the tunnel).</p>
 <h3 id="step-11-first-webhook-delivery-from-github">Step 11 — First
 webhook delivery from GitHub</h3>
 <p>In the GitHub App’s <strong>Advanced &gt; Recent Deliveries</strong>
