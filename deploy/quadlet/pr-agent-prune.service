@@ -1,0 +1,5 @@
+[Unit]
+Description=PR-Agent weekly image prune (drop dangling/unused image layers)
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman image prune -f

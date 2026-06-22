@@ -1,0 +1,5 @@
+[Unit]
+Description=PR-Agent daily deploy check
+[Service]
+Type=oneshot
+ExecStart=%h/pr-agent/deploy/deploy.sh

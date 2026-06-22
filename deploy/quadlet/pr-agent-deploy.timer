@@ -1,0 +1,7 @@
+[Unit]
+Description=Run PR-Agent deploy at 04:00 America/Detroit
+[Timer]
+OnCalendar=*-*-* 04:00:00 America/Detroit
+Persistent=true
+[Install]
+WantedBy=timers.target
