@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fetch app secrets from the Cloudflare broker (Access service token) -> podman secrets.
-# The broker (pr-agent-secrets.tjw.dev) returns JSON; each value becomes a podman
-# secret, consumed by the quadlet as env/mount targets.
+# The shared broker (secrets.tjw.dev) is path-scoped per project; we read this box's
+# bundle at /secrets/$SECRETS_NS. It returns JSON; each value becomes a podman secret,
+# consumed by the quadlet as env/mount targets.
 #
 # Multi-line PEM: GITHUB_APP_PRIVATE_KEY is a multi-line PEM. It rides through the
 # broker as a JSON string (newlines as \n), jq -er decodes it back to real newlines,
@@ -14,8 +15,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/config.env"
 : "${CF_SERVICE_TOKEN_ID:?service token id required}"
 : "${CF_SERVICE_TOKEN_SECRET:?service token secret required}"
+: "${SECRETS_NS:?secrets namespace required}"
 
-JSON="$(curl -fsS "https://$SECRETS_DOMAIN/secrets" \
+JSON="$(curl -fsS "https://$SECRETS_DOMAIN/secrets/$SECRETS_NS" \
   -H "CF-Access-Client-Id: $CF_SERVICE_TOKEN_ID" \
   -H "CF-Access-Client-Secret: $CF_SERVICE_TOKEN_SECRET")"
 
