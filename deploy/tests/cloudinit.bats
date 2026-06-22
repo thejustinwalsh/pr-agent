@@ -6,7 +6,20 @@ CF_SERVICE_TOKEN_ID=tid
 CF_SERVICE_TOKEN_SECRET=tsec
 FORK_REPO=thejustinwalsh/pr-agent
 TUNNEL_ID=abc-123
+OTP_KV_ID=kvid123
+SECRETS_NS=pr-agent
 EOF
+  # Mock wrangler so the OTP mint (kv key put / read-back get) needs no live KV.
+  BIN="$TMP/bin"; mkdir -p "$BIN"
+  cat > "$BIN/wrangler" <<'EOF'
+#!/usr/bin/env bash
+case "$2 $3" in
+  "key get") echo "pr-agent" ;;
+esac
+exit 0
+EOF
+  chmod +x "$BIN/wrangler"
+  export WRANGLER="$BIN/wrangler"
 }
 teardown() { rm -rf "$TMP"; }
 
@@ -70,7 +83,7 @@ teardown() { rm -rf "$TMP"; }
 @test "preserves platform key injection and clones the fork's production branch" {
   bash "$BATS_TEST_DIRNAME/../gen-cloud-init.sh" "$TMP/vars" "$TMP/out.yaml"
   grep -q "  - default" "$TMP/out.yaml"   # keep the distro/Hetzner default user
-  grep -q "git clone -b production https://github.com/thejustinwalsh/pr-agent.git ~/pr-agent" "$TMP/out.yaml"
+  grep -q "git clone --depth 1 -b production https://github.com/thejustinwalsh/pr-agent.git ~/pr-agent" "$TMP/out.yaml"
   grep -q "/home/pragent/.ssh/authorized_keys" "$TMP/out.yaml"
 }
 

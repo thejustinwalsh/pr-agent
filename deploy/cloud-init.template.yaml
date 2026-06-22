@@ -18,6 +18,13 @@ write_files:
     content: |
       CF_SERVICE_TOKEN_ID=__CF_SERVICE_TOKEN_ID__
       CF_SERVICE_TOKEN_SECRET=__CF_SERVICE_TOKEN_SECRET__
+  # Single-use OTP for the boot-time secrets fetch. fetch-secrets.sh sends it
+  # once and deletes this file. (chown'd to pragent below, like the token file.)
+  - path: /etc/pr-agent/otp.env
+    permissions: '0600'
+    owner: root:root
+    content: |
+      SECRETS_OTP=__SECRETS_OTP__
   # SSH posture: port open to the world, KEY-ONLY (passwords off), root via key only,
   # brute-force throttled by fail2ban. No source-IP allow-list (fragile behind
   # iCloud Private Relay / changing egress IPs).
