@@ -1,5 +1,5 @@
 {
-  "name": "pr-agent-secrets-broker",
+  "name": "tjw-secrets-broker",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,12 +7,12 @@
     "lint": "eslint src"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.5.0",
+    "@cloudflare/vitest-pool-workers": "^0.8.0",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
     "eslint": "^9.0.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0",
-    "wrangler": "^3.80.0"
+    "vitest": "~3.2.0",
+    "wrangler": "^4.0.0"
   }
 }

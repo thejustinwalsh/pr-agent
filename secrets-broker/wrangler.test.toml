@@ -1,0 +1,11 @@
+# Test-only wrangler config for vitest (see vitest.config.ts). Identical to
+# wrangler.toml MINUS the [[secrets_store_secrets]] blocks: under the wrangler 4
+# pool, those emulate a real (empty) Secrets Store whose .get() throws
+# "Secret not found", shadowing the plain-string stubs in vitest.config.ts.
+# Production secrets are Secrets Store objects exercisable only against the live
+# store, so tests stub them as strings. Keep compatibility_date/flags in sync
+# with wrangler.toml.
+name = "tjw-secrets-broker"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]

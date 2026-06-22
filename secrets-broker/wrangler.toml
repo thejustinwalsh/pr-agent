@@ -1,46 +1,46 @@
-name = "pr-agent-secrets-broker"
+name = "tjw-secrets-broker"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 routes = [
-  { pattern = "pr-agent-secrets.tjw.dev", custom_domain = true }
+  { pattern = "secrets.tjw.dev", custom_domain = true }
 ]
 
-# Production: bind each secret from Cloudflare Secrets Store. Uncomment the blocks
-# below and replace REPLACE_STORE_ID with your account's store id during setup
-# (see the cloudflare runbook). Requires wrangler >=4 with Secrets Store GA support;
-# the blocks below are the correct shape.
+# Shared secrets broker (secrets.tjw.dev), path-scoped per namespace. Each binding
+# below is a value in the `pr-agent` bundle (src/index.ts BUNDLES["pr-agent"]).
 #
-# store_id is your account's SINGLE default Workers Secrets Store (one store / 100
-# secrets per account — you cannot create more, and 5 secrets is well within budget).
-# Get it from the dashboard or `wrangler secrets-store store list`. It is the SAME
-# store the CodeVibes broker binds; only the secret_names differ (pr-agent-*).
-# All five bindings share that same store_id.
+# store_id is the account's SINGLE default Workers Secrets Store (one store / 100
+# secrets per account). Get it from the dashboard or `wrangler secrets-store store
+# list`. All bindings share that store_id. The pr-agent-* secrets must exist in the
+# store before `wrangler deploy` (see the cloudflare runbook, Part 3).
 #
-# [[secrets_store_secrets]]
-# binding = "DEEPSEEK_API_KEY"
-# store_id = "REPLACE_STORE_ID"
-# secret_name = "pr-agent-deepseek-key"
-#
-# [[secrets_store_secrets]]
-# binding = "GITHUB_APP_PRIVATE_KEY"
-# store_id = "REPLACE_STORE_ID"
-# secret_name = "pr-agent-github-app-key"
-#
-# [[secrets_store_secrets]]
-# binding = "GITHUB_APP_ID"
-# store_id = "REPLACE_STORE_ID"
-# secret_name = "pr-agent-github-app-id"
-#
-# [[secrets_store_secrets]]
-# binding = "GITHUB_WEBHOOK_SECRET"
-# store_id = "REPLACE_STORE_ID"
-# secret_name = "pr-agent-webhook-secret"
-#
-# [[secrets_store_secrets]]
-# binding = "TUNNEL_CRED"
-# store_id = "REPLACE_STORE_ID"
-# secret_name = "pr-agent-tunnel-cred"
+# To add a future project: register its bundle in src/index.ts and add its
+# <project>-* secrets as bindings here (use distinct binding names per namespace).
+
+[[secrets_store_secrets]]
+binding = "DEEPSEEK_API_KEY"
+store_id = "a82a58437ef14b80bcba87a7d5589377"
+secret_name = "pr-agent-deepseek-key"
+
+[[secrets_store_secrets]]
+binding = "GITHUB_APP_PRIVATE_KEY"
+store_id = "a82a58437ef14b80bcba87a7d5589377"
+secret_name = "pr-agent-github-app-key"
+
+[[secrets_store_secrets]]
+binding = "GITHUB_APP_ID"
+store_id = "a82a58437ef14b80bcba87a7d5589377"
+secret_name = "pr-agent-github-app-id"
+
+[[secrets_store_secrets]]
+binding = "GITHUB_WEBHOOK_SECRET"
+store_id = "a82a58437ef14b80bcba87a7d5589377"
+secret_name = "pr-agent-webhook-secret"
+
+[[secrets_store_secrets]]
+binding = "TUNNEL_CRED"
+store_id = "a82a58437ef14b80bcba87a7d5589377"
+secret_name = "pr-agent-tunnel-cred"
 
 
 # NOTE: no [vars] here on purpose. `[vars]` would be deployed to the Worker as
