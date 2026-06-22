@@ -1,0 +1,17 @@
+[Unit]
+Description=PR-Agent Cloudflare Tunnel
+After=network-online.target
+
+[Container]
+ContainerName=pr-agent-cloudflared
+Image=docker.io/cloudflare/cloudflared:latest
+Pod=pragent.pod
+Volume=%h/pr-agent/deploy/cloudflared/config.yml:/etc/cloudflared/config.yml:ro,Z
+Secret=pr-agent-tunnel-cred,type=mount,target=/etc/cloudflared/cred.json
+Exec=tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

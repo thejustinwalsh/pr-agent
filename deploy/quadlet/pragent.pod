@@ -1,0 +1,5 @@
+[Pod]
+PodName=pr-agent
+
+[Install]
+WantedBy=default.target

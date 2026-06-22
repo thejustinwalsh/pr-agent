@@ -1,0 +1,24 @@
+[Unit]
+Description=PR-Agent webhook server
+After=network-online.target
+
+[Container]
+ContainerName=pr-agent
+Image=localhost/pr-agent:current
+Pod=pragent.pod
+Environment=OPENAI__API_BASE=https://api.deepseek.com
+Environment=CONFIG__MODEL=deepseek-v4-pro
+# TODO(WS-C): placeholder context window — confirm deepseek-v4-pro's real max tokens before ship.
+Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=128000
+Environment=CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]
+Environment=GITHUB__DEPLOYMENT_TYPE=app
+Secret=pr-agent-deepseek-key,type=env,target=OPENAI__KEY
+Secret=pr-agent-github-app-key,type=env,target=GITHUB_APP__PRIVATE_KEY
+Secret=pr-agent-github-app-id,type=env,target=GITHUB_APP__APP_ID
+Secret=pr-agent-webhook-secret,type=env,target=GITHUB__WEBHOOK_SECRET
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

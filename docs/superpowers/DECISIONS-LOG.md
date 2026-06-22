@@ -22,3 +22,16 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
   - **Secrets (via broker):** `DEEPSEEK_API_KEY`, GitHub App **private key** (PEM), GitHub App **id**, **webhook secret**, **tunnel credential**. (No JWT_SECRET / ENCRYPTION_KEY — PR-Agent doesn't use them. ENCRYPTION_KEY 64-hex lesson is moot here.)
 - **Affected:** entire `deploy/`, `secrets-broker/`, `.github/workflows/`, `patches/`, `docs/`.
 - **Revisit:** confirm `deepseek-v4-pro` exact model string + context window against DeepSeek's live API; confirm PR-Agent webhook health path for the smoke test.
+
+## 2026-06-21 — WS-A: no model-forcing patch needed; custom_model_max_tokens is MANDATORY
+- **Context:** Verify PR-Agent honors DeepSeek model config vs. hardcoding a default.
+- **Decision:** PR-Agent resolves model from `config.model` and api_base from `openai.api_base`, forwarding both verbatim to litellm — nothing hardcodes a default in the call path. Dynaconf's `env_loader` gives `CONFIG__MODEL`/`OPENAI__API_BASE` precedence over `configuration.toml` (whose default is `gpt-5.5-2026-04-23`). Verified empirically. So **no source rewrite**; `patches/apply.sh` ships as a fail-loud **no-op asserting codemod** guarding this contract against upstream drift, with `deploy/tests/model-config.bats` (10/10).
+- **LOAD-BEARING:** `deepseek-v4-pro` is not in `MAX_TOKENS`; `get_max_tokens()` raises unless `CONFIG__CUSTOM_MODEL_MAX_TOKENS > 0`. So it is **mandatory**. The placeholder `128000` MUST be replaced with v4-pro's real context window before ship (TODO in pr-agent.container).
+- **Affected:** `patches/apply.sh`, `deploy/tests/model-config.bats`.
+- **Revisit:** confirm deepseek-v4-pro context window (ask user — post-cutoff model).
+
+## 2026-06-21 — WS-C: quadlet/tunnel; render-config POSIX; FALLBACK_MODELS added
+- **Context:** Quadlet pod + tunnel for the single stateless container.
+- **Decision:** `pragent.pod` + `pr-agent.container` (ContainerName, floating `:current`, env + secret→env mappings, no volume) + `pr-agent-cloudflared.container`; `render-config.sh` rewritten POSIX (`#!/bin/sh`, `set -eu`, `.` not `source`). Orchestrator added `CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]` (agent omitted it under the strict file list); `custom_model_max_tokens>0` covers both v4-pro and the v4-flash fallback since neither is in MAX_TOKENS.
+- **Affected:** `deploy/quadlet/*`, `deploy/cloudflared/config.yml.template`, `deploy/render-config.sh`, `deploy/tests/quadlet.bats`.
+- **Revisit:** v4-pro context window (shared with WS-A).

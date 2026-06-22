@@ -1,0 +1,6 @@
+tunnel: __TUNNEL_ID__
+credentials-file: /etc/cloudflared/cred.json
+ingress:
+  - hostname: pr-agent.tjw.dev
+    service: http://localhost:3000
+  - service: http_status:404
