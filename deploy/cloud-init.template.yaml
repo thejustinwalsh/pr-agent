@@ -1,0 +1,71 @@
+#cloud-config
+package_update: true
+packages: [openssh-server, podman, uidmap, slirp4netns, git, curl, jq, ufw, fail2ban]
+users:
+  - default          # keep the distro/Hetzner default user so the injected SSH key lands
+  - name: pragent
+    shell: /bin/bash
+    lock_passwd: true
+write_files:
+  - path: /etc/systemd/journald.conf.d/00-pr-agent.conf
+    content: |
+      [Journal]
+      SystemMaxUse=500M
+      MaxRetentionSec=2week
+  - path: /etc/pr-agent/cf-service-token.env
+    permissions: '0600'
+    owner: root:root
+    content: |
+      CF_SERVICE_TOKEN_ID=__CF_SERVICE_TOKEN_ID__
+      CF_SERVICE_TOKEN_SECRET=__CF_SERVICE_TOKEN_SECRET__
+  # SSH posture: port open to the world, KEY-ONLY (passwords off), root via key only,
+  # brute-force throttled by fail2ban. No source-IP allow-list (fragile behind
+  # iCloud Private Relay / changing egress IPs).
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [sshd]
+      enabled = true
+      mode = aggressive
+      maxretry = 4
+      findtime = 10m
+      bantime = 1h
+  # Key-only SSH via a drop-in. Ubuntu 24.04+/26.04 keep these in sshd_config.d/*.conf,
+  # NOT the main sshd_config, so editing the main file does nothing. A 00- drop-in is
+  # read first (first-match wins) so it overrides the cloud image's defaults.
+  # prohibit-password (not "no") keeps key-based root working — there's no other
+  # key-bearing SSH account, so "no" would lock the box out.
+  - path: /etc/ssh/sshd_config.d/00-pragent.conf
+    content: |
+      PermitRootLogin prohibit-password
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+runcmd:
+  - systemctl restart systemd-journald
+  # NOTE: --force is ONLY valid for `enable`/`reset`. Using it on `default`/`allow`
+  # makes ufw print usage and add NO rule — which previously left ufw enabled with
+  # default-deny and no SSH allow, silently dropping port 22 (connection timeout).
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw --force enable
+  # Apply the sshd drop-in (written above) and start fail2ban.
+  - systemctl reload ssh || systemctl reload sshd || true
+  - systemctl enable --now fail2ban
+  - loginctl enable-linger pragent
+  # PR-Agent is stateless — no detachable volume. Just the deploy-state dir.
+  - mkdir -p /var/lib/pr-agent
+  - chown -R pragent:pragent /var/lib/pr-agent /etc/pr-agent
+  # Mirror the platform-injected SSH key (root, via the `- default` user) to pragent
+  # so you can SSH directly as the deploy user. No-op if root has no key yet.
+  - if [ -s /root/.ssh/authorized_keys ]; then install -d -m 700 -o pragent -g pragent /home/pragent/.ssh && install -m 600 -o pragent -g pragent /root/.ssh/authorized_keys /home/pragent/.ssh/authorized_keys; fi
+  # clone fork, install units, fetch secrets, first deploy (as pragent, with user systemd)
+  - su - pragent -c 'git clone -b production https://github.com/__FORK_REPO__.git ~/pr-agent'
+  # Safety net: ensure scripts are executable even if a commit lost the +x bit.
+  - su - pragent -c 'chmod +x ~/pr-agent/deploy/*.sh ~/pr-agent/patches/*.sh 2>/dev/null || true'
+  - su - pragent -c 'mkdir -p ~/.config/containers/systemd ~/.config/systemd/user'
+  - su - pragent -c 'cp ~/pr-agent/deploy/quadlet/*.pod ~/pr-agent/deploy/quadlet/*.container ~/.config/containers/systemd/'
+  - su - pragent -c 'cp ~/pr-agent/deploy/quadlet/*.timer ~/pr-agent/deploy/quadlet/*.service ~/.config/systemd/user/'
+  - su - pragent -c 'cd ~/pr-agent/deploy && ./render-config.sh'
+  - su - pragent -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); set -a; . /etc/pr-agent/cf-service-token.env; ~/pr-agent/deploy/fetch-secrets.sh'
+  - su - pragent -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); ~/pr-agent/deploy/deploy.sh || true'
+  - su - pragent -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload; systemctl --user enable --now pr-agent-deploy.timer pr-agent-prune.timer'

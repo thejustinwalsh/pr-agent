@@ -1,0 +1,5 @@
+# Copy to cloud-init.vars (git-ignored) and fill. Then: ./gen-cloud-init.sh cloud-init.vars
+CF_SERVICE_TOKEN_ID=
+CF_SERVICE_TOKEN_SECRET=
+FORK_REPO=thejustinwalsh/pr-agent
+TUNNEL_ID=
