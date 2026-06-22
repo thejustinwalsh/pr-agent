@@ -8,8 +8,8 @@ Image=localhost/pr-agent:current
 Pod=pragent.pod
 Environment=OPENAI__API_BASE=https://api.deepseek.com
 Environment=CONFIG__MODEL=deepseek-v4-pro
-# TODO(WS-C): placeholder context window — confirm deepseek-v4-pro's real max tokens before ship.
-Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=128000
+# deepseek-v4-pro: 1M context window (output ceiling 384K is handled by PR-Agent's output-budget settings).
+Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000
 Environment=CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]
 Environment=GITHUB__DEPLOYMENT_TYPE=app
 Secret=pr-agent-deepseek-key,type=env,target=OPENAI__KEY

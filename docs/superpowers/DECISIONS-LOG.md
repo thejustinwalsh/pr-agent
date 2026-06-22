@@ -43,3 +43,9 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Verified end-to-end in OrbStack:** image build, webhook 200 smoke, quadlet dry-run, full cloud-init integration boot. See DEPLOYABILITY.md.
 - **Residual operator TODOs (in DEPLOYABILITY.md):** set v4-pro `custom_model_max_tokens`; create GitHub App; Cloudflare tunnel + Access-exempt webhook + secrets broker (store_id) + service token; Hetzner CX22 w/ IPv4; ghcr package public after first build; fill `TUNNEL_ID`.
 - **No model-forcing source patch needed** (WS-A): env reliably pins the model; `patches/apply.sh` ships as a fail-loud no-op contract guard.
+
+## 2026-06-22 — deepseek-v4-pro context window confirmed
+- **Context:** `CONFIG__CUSTOM_MODEL_MAX_TOKENS` was a placeholder (`128000`); it is mandatory (PR-Agent throws for models absent from MAX_TOKENS).
+- **Decision:** User confirmed deepseek-v4-pro = **1M context length, 384K max output**. Set `CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000` (PR-Agent's max_tokens = context window; the 384K output ceiling is governed by PR-Agent's own output-budget config, not this value).
+- **Affected:** `deploy/quadlet/pr-agent.container`.
+- **Revisit:** none — the one mandatory operator value is now set.
