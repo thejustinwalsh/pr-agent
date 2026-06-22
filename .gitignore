@@ -18,6 +18,7 @@ poetry.lock
 # Deployment — rendered artifacts (per-server values / secrets)
 deploy/cloud-init.out.yaml
 deploy/cloud-init.vars
+deploy/broker-secrets.vars
 deploy/cloudflared/config.yml
 
 # node deps for the secrets-broker Worker — never commit

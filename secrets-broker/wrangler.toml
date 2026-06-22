@@ -8,41 +8,17 @@ routes = [
 # Reachable ONLY via the Access-gated custom domain — no *.workers.dev bypass route.
 workers_dev = false
 
-# Shared secrets broker (secrets.tjw.dev), path-scoped per namespace. Each binding
-# below is a value in the `pr-agent` bundle (src/index.ts BUNDLES["pr-agent"]).
+# Shared secrets broker (secrets.tjw.dev), path-scoped per namespace. The five
+# `pr-agent` secrets (src/index.ts BUNDLES["pr-agent"]) are NOT declared here —
+# they are **Worker secrets**, set in one shot by `deploy/set-broker-secrets.sh`
+# (`wrangler secret put`). Why not the Secrets Store: its value cap is 1024 chars
+# and a base64 RSA-2048 GitHub App PEM is ~2.2 KB, so the PEM cannot live there;
+# rather than split storage across two mechanisms, all five are Worker secrets
+# (no size cap, one uniform flow). The broker reads each as a plain string binding
+# (resolve() handles string | Secrets Store object).
 #
-# store_id is the account's SINGLE default Workers Secrets Store (one store / 100
-# secrets per account). Get it from the dashboard or `wrangler secrets-store store
-# list`. All bindings share that store_id. The pr-agent-* secrets must exist in the
-# store before `wrangler deploy` (see the cloudflare runbook, Part 3).
-#
-# To add a future project: register its bundle in src/index.ts and add its
-# <project>-* secrets as bindings here (use distinct binding names per namespace).
-
-# GITHUB_APP_PRIVATE_KEY is NOT here: a base64 RSA-2048 PEM (~2.2 KB) exceeds the
-# Secrets Store's 1024-char value limit. It is a Worker secret instead (set with
-# `wrangler secret put GITHUB_APP_PRIVATE_KEY` — base64 value), which the broker
-# reads as a plain string binding (resolve() handles string | Secrets Store object).
-
-[[secrets_store_secrets]]
-binding = "DEEPSEEK_API_KEY"
-store_id = "a82a58437ef14b80bcba87a7d5589377"
-secret_name = "pr-agent-deepseek-key"
-
-[[secrets_store_secrets]]
-binding = "GITHUB_APP_ID"
-store_id = "a82a58437ef14b80bcba87a7d5589377"
-secret_name = "pr-agent-github-app-id"
-
-[[secrets_store_secrets]]
-binding = "GITHUB_WEBHOOK_SECRET"
-store_id = "a82a58437ef14b80bcba87a7d5589377"
-secret_name = "pr-agent-webhook-secret"
-
-[[secrets_store_secrets]]
-binding = "TUNNEL_CRED"
-store_id = "a82a58437ef14b80bcba87a7d5589377"
-secret_name = "pr-agent-tunnel-cred"
+# To add a future project: register its bundle in src/index.ts and set its secrets
+# as Worker secrets (distinct binding names per namespace).
 
 # OTP single-use store. The Worker only reads + deletes (minting is CLI-only:
 # wrangler kv key put). Create with `wrangler kv namespace create OTP_KV` and
@@ -54,5 +30,5 @@ id = "REPLACE_WITH_OTP_KV_ID"
 
 # NOTE: no [vars] here on purpose. `[vars]` would be deployed to the Worker as
 # PLAINTEXT env vars and committed to git — a leak trap, and it would collide with
-# the same-named Secrets Store bindings in production. Test stub bindings live in
+# the same-named Worker secrets in production. Test stub bindings live in
 # vitest.config.ts (miniflare.bindings). This file carries zero secret values.

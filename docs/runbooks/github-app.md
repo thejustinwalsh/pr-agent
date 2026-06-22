@@ -94,13 +94,7 @@ These two cover PR-Agent's core flows. If you intend to use PR-level review comm
 
 This PEM becomes the `pr-agent-github-app-key` secret → `GITHUB_APP__PRIVATE_KEY`. It is **multi-line**, which matters for how it is stored and injected:
 
-- The PEM does **not** go in the Secrets Store — a base64 RSA-2048 key (~2.2 KB) exceeds the Store's 1024-char value limit. Store it as a **Worker secret** on the broker (`cloudflare.html` Step 11a), base64-encoded so it stays single-line and JSON-safe through the broker. From `secrets-broker/`, after the Worker is deployed, pipe it in (so it never lands in your shell history or `ps`):
-
-  ```bash
-  openssl base64 -A -in pr-agent.<date>.private-key.pem | npx wrangler secret put GITHUB_APP_PRIVATE_KEY
-  ```
-
-  `fetch-secrets.sh` decodes it back to the real multi-line PEM (`openssl base64 -d -A`) before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact key. (Encode → decode is lossless; verify with `openssl base64 -A -in key.pem | openssl base64 -d -A | diff - key.pem`.)
+- The PEM is stored as a **Worker secret** on the broker (not the Secrets Store — a base64 RSA-2048 key is ~2.2 KB, over the Store's 1024-char cap). You do not run `wrangler` by hand: just point `deploy/broker-secrets.vars` at the downloaded file — `GITHUB_APP_PRIVATE_KEY_FILE=~/Downloads/pr-agent.<date>.private-key.pem` — and `deploy/set-broker-secrets.sh` (cloudflare runbook Step 13a) base64-encodes it and sets it for you. `fetch-secrets.sh` on the box decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact key.
 - If you are bootstrapping by hand (broker unreachable), do **not** base64-encode and do **not** paste at a prompt. Pass the downloaded file to `deploy/bootstrap-secrets.sh /path/to/pr-agent.<date>.private-key.pem`; it feeds the raw `.pem` straight into `podman secret create` so newlines survive.
 
 > **Never commit the PEM.** It is the App's identity; anyone holding it can act as PR-Agent against every repo the App is installed on. Store it in the Secrets Store and your password manager only.

@@ -119,34 +119,34 @@ Store them in your password manager. They are supplied to `deploy/gen-cloud-init
 
 ---
 
-## Part 3 — Populate the Secrets Store
+## Part 3 — Gather the app secrets
 
-> Cloudflare gives each account **one** Secrets Store (up to 100 secrets). We add our five `pr-agent-*` secrets there; the `pr-agent-` prefix keeps them in their own namespace alongside any other project's secrets. You cannot (and need not) create a second store.
+The five `pr-agent` secrets are stored as **Cloudflare Worker secrets** on the broker, set by one script in Part 4 — **not** the Secrets Store. (A base64 RSA-2048 GitHub App PEM is ~2.2 KB, over the Store's **1024-char** value cap, and it cannot be compressed — it is random key material — so rather than split storage across two mechanisms, all five use the one uncapped mechanism. Worker secrets are encrypted at rest and write-only.) Here you only gather the values into a git-ignored vars file.
 
-**Step 10.** Navigate to **Workers & Pages > Secrets Store** and record the **Store ID** (dashboard, or `npx wrangler secrets-store store list`). It should match the `store_id` already set in `secrets-broker/wrangler.toml`.
+```bash
+cp deploy/broker-secrets.vars.example deploy/broker-secrets.vars
+$EDITOR deploy/broker-secrets.vars
+```
 
-**Step 11.** Add the **four** small secrets via the dashboard (names from `deploy/config.env`). The GitHub App PEM is **not** here — it exceeds the Store's 1024-char value limit and goes in as a Worker secret in Step 11a.
+Single-quote the inline values; the tunnel cred and PEM are **file paths** so their JSON/newlines are never mangled by the shell:
 
-| Secret name | Value | Source |
+| Vars key | Value | Source |
 |---|---|---|
-| `pr-agent-deepseek-key` | DeepSeek API key | DeepSeek dashboard → `OPENAI__KEY` |
-| `pr-agent-github-app-id` | GitHub App ID (number) | `github-app.html` Step 7 → `GITHUB_APP__APP_ID` |
-| `pr-agent-webhook-secret` | Webhook HMAC secret | `github-app.html` Step 3 → `GITHUB__WEBHOOK_SECRET` |
-| `pr-agent-tunnel-cred` | Tunnel credential JSON (one line) | Step 3 above → cloudflared mount |
+| `DEEPSEEK_API_KEY` | DeepSeek API key (`sk-…`) | DeepSeek dashboard |
+| `GITHUB_APP_ID` | GitHub App ID (number) | `github-app.html` Step 7 |
+| `GITHUB_WEBHOOK_SECRET` | Webhook HMAC secret | `github-app.html` Step 3 |
+| `TUNNEL_CRED_FILE` | path to `~/.cloudflared/<TUNNEL_UUID>.json` | Step 3 above |
+| `GITHUB_APP_PRIVATE_KEY_FILE` | path to the downloaded `.pem` | `github-app.html` Step 8 |
 
-> The GitHub App PEM is **not** a Store secret (it exceeds the 1024-char cap) — it is set as a **Worker secret** *after* the broker is deployed, in **Step 13a** below.
-
-> **No AES `ENCRYPTION_KEY` here** — PR-Agent is stateless and keeps no database, so there is nothing to encrypt and no never-rotate key to guard. All five secrets are rotatable: change the value (Store dashboard for the four; `wrangler secret put` for the PEM), re-run `fetch-secrets.sh` (with a fresh OTP), restart the container.
+> **No AES `ENCRYPTION_KEY` here** — PR-Agent is stateless and keeps no database, so there is nothing to encrypt and no never-rotate key to guard. To rotate any secret: edit `broker-secrets.vars`, re-run `set-broker-secrets.sh` (Step 13a), then re-fetch on the box (with a fresh OTP) and restart the container.
 
 ---
 
-## Part 4 — Deploy the shared broker Worker
+## Part 4 — Deploy the broker and set its secrets
 
 The broker source lives in this repo at `secrets-broker/`. `secrets.tjw.dev` is redeployed from here.
 
-**Step 12.** Confirm `secrets-broker/wrangler.toml`. The `[[secrets_store_secrets]]` blocks bind the five `pr-agent-*` secrets to the Worker, all sharing the account `store_id`, and the route is the custom domain `secrets.tjw.dev`. The `pr-agent` namespace is registered in `secrets-broker/src/index.ts` (`BUNDLES["pr-agent"]`). The file deliberately carries no `[vars]` block — `[vars]` would deploy plaintext values and collide with the Secrets Store bindings; test stubs live in `vitest.config.ts`, not here.
-
-> All five `pr-agent-*` secrets from Part 3 must exist in the store before deploy, or `wrangler deploy` fails resolving the bindings.
+**Step 12.** Confirm `secrets-broker/wrangler.toml`: the route is the custom domain `secrets.tjw.dev`, `workers_dev = false`, and the only binding is `OTP_KV`. The five app secrets are **not** declared here — they are Worker secrets set in Step 13a. The `pr-agent` namespace is registered in `secrets-broker/src/index.ts` (`BUNDLES["pr-agent"]`). No `[vars]` block — that would deploy plaintext and collide with the Worker secrets.
 
 **Step 12a — Create the OTP KV namespace.** The broker enforces a single-use OTP per fetch (see `recovery.html` and the deployment spec), stored in Workers KV.
 
@@ -155,7 +155,7 @@ cd secrets-broker
 npx wrangler kv namespace create OTP_KV   # prints an id
 ```
 
-Put the id into `wrangler.toml` (`[[kv_namespaces]]` `OTP_KV`, replacing `REPLACE_WITH_OTP_KV_ID`) and into `deploy/cloud-init.vars` as `OTP_KV_ID`. Scope the wrangler API token used for **minting** to KV write on this namespace only (least privilege) — the Worker itself only reads and deletes. `workers_dev = false` in `wrangler.toml` keeps the broker reachable solely via the Access-gated `secrets.tjw.dev` (no `*.workers.dev` bypass route).
+Put the id into `wrangler.toml` (`[[kv_namespaces]]` `OTP_KV`, replacing `REPLACE_WITH_OTP_KV_ID`) and into `deploy/cloud-init.vars` as `OTP_KV_ID`. `workers_dev = false` keeps the broker reachable solely via the Access-gated `secrets.tjw.dev` (no `*.workers.dev` bypass route).
 
 **Step 13.** Deploy (wrangler v4):
 
@@ -165,13 +165,13 @@ npm install
 npx wrangler deploy
 ```
 
-**Step 13a — Set the GitHub App PEM as a Worker secret.** Now that the Worker exists, set the PEM (too large for the Secrets Store) as a Worker secret, base64-encoded and **piped** so it never lands in shell history or `ps`:
+**Step 13a — Set the five app secrets (one command).** Now that the Worker exists, set all five Worker secrets from your `broker-secrets.vars`:
 
 ```bash
-openssl base64 -A -in pr-agent.<date>.private-key.pem | npx wrangler secret put GITHUB_APP_PRIVATE_KEY
+bash deploy/set-broker-secrets.sh
 ```
 
-The broker reads it as a plain string (no code change), and `fetch-secrets.sh` decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`. Confirm it's set: `npx wrangler secret list` shows `GITHUB_APP_PRIVATE_KEY`.
+It pipes each value to `wrangler secret put` (so nothing lands in shell history or `ps`), base64-encodes the PEM from its file, and sends the tunnel cred verbatim. Re-run it any time to rotate. Confirm: `(cd secrets-broker && npx wrangler secret list)` lists `DEEPSEEK_API_KEY`, `GITHUB_APP_ID`, `GITHUB_WEBHOOK_SECRET`, `TUNNEL_CRED`, `GITHUB_APP_PRIVATE_KEY`. `fetch-secrets.sh` on the box decodes the base64 PEM back to the real multi-line key before `podman secret create`.
 
 **Step 14 — Confirm Access is enforced on the broker.** An unauthenticated request must be blocked:
 

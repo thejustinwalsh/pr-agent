@@ -417,24 +417,22 @@ Client Secret:  &lt;CF_SERVICE_TOKEN_SECRET&gt;</code></pre>
 application and confirm the <code>pr-agent-server</code> service token
 is an allowed selector. Save.</p>
 <hr />
-<h2 id="part-3-populate-the-secrets-store">Part 3 — Populate the Secrets
-Store</h2>
-<blockquote>
-<p>Cloudflare gives each account <strong>one</strong> Secrets Store (up
-to 100 secrets). We add our five <code>pr-agent-*</code> secrets there;
-the <code>pr-agent-</code> prefix keeps them in their own namespace
-alongside any other project’s secrets. You cannot (and need not) create
-a second store.</p>
-</blockquote>
-<p><strong>Step 10.</strong> Navigate to <strong>Workers &amp; Pages
-&gt; Secrets Store</strong> and record the <strong>Store ID</strong>
-(dashboard, or <code>npx wrangler secrets-store store list</code>). It
-should match the <code>store_id</code> already set in
-<code>secrets-broker/wrangler.toml</code>.</p>
-<p><strong>Step 11.</strong> Add the <strong>four</strong> small secrets
-via the dashboard (names from <code>deploy/config.env</code>). The
-GitHub App PEM is <strong>not</strong> here — it exceeds the Store’s
-1024-char value limit and goes in as a Worker secret in Step 11a.</p>
+<h2 id="part-3-gather-the-app-secrets">Part 3 — Gather the app
+secrets</h2>
+<p>The five <code>pr-agent</code> secrets are stored as
+<strong>Cloudflare Worker secrets</strong> on the broker, set by one
+script in Part 4 — <strong>not</strong> the Secrets Store. (A base64
+RSA-2048 GitHub App PEM is ~2.2 KB, over the Store’s
+<strong>1024-char</strong> value cap, and it cannot be compressed — it
+is random key material — so rather than split storage across two
+mechanisms, all five use the one uncapped mechanism. Worker secrets are
+encrypted at rest and write-only.) Here you only gather the values into
+a git-ignored vars file.</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> deploy/broker-secrets.vars.example deploy/broker-secrets.vars</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="va">$EDITOR</span> deploy/broker-secrets.vars</span></code></pre></div>
+<p>Single-quote the inline values; the tunnel cred and PEM are
+<strong>file paths</strong> so their JSON/newlines are never mangled by
+the shell:</p>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -443,106 +441,95 @@ GitHub App PEM is <strong>not</strong> here — it exceeds the Store’s
 </colgroup>
 <thead>
 <tr>
-<th>Secret name</th>
+<th>Vars key</th>
 <th>Value</th>
 <th>Source</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>pr-agent-deepseek-key</code></td>
-<td>DeepSeek API key</td>
-<td>DeepSeek dashboard → <code>OPENAI__KEY</code></td>
+<td><code>DEEPSEEK_API_KEY</code></td>
+<td>DeepSeek API key (<code>sk-…</code>)</td>
+<td>DeepSeek dashboard</td>
 </tr>
 <tr>
-<td><code>pr-agent-github-app-id</code></td>
+<td><code>GITHUB_APP_ID</code></td>
 <td>GitHub App ID (number)</td>
-<td><code>github-app.html</code> Step 7 →
-<code>GITHUB_APP__APP_ID</code></td>
+<td><code>github-app.html</code> Step 7</td>
 </tr>
 <tr>
-<td><code>pr-agent-webhook-secret</code></td>
+<td><code>GITHUB_WEBHOOK_SECRET</code></td>
 <td>Webhook HMAC secret</td>
-<td><code>github-app.html</code> Step 3 →
-<code>GITHUB__WEBHOOK_SECRET</code></td>
+<td><code>github-app.html</code> Step 3</td>
 </tr>
 <tr>
-<td><code>pr-agent-tunnel-cred</code></td>
-<td>Tunnel credential JSON (one line)</td>
-<td>Step 3 above → cloudflared mount</td>
+<td><code>TUNNEL_CRED_FILE</code></td>
+<td>path to <code>~/.cloudflared/&lt;TUNNEL_UUID&gt;.json</code></td>
+<td>Step 3 above</td>
+</tr>
+<tr>
+<td><code>GITHUB_APP_PRIVATE_KEY_FILE</code></td>
+<td>path to the downloaded <code>.pem</code></td>
+<td><code>github-app.html</code> Step 8</td>
 </tr>
 </tbody>
 </table>
 <blockquote>
-<p>The GitHub App PEM is <strong>not</strong> a Store secret (it exceeds
-the 1024-char cap) — it is set as a <strong>Worker secret</strong>
-<em>after</em> the broker is deployed, in <strong>Step 13a</strong>
-below.</p>
-</blockquote>
-<blockquote>
 <p><strong>No AES <code>ENCRYPTION_KEY</code> here</strong> — PR-Agent
 is stateless and keeps no database, so there is nothing to encrypt and
-no never-rotate key to guard. All five secrets are rotatable: change the
-value (Store dashboard for the four; <code>wrangler secret put</code>
-for the PEM), re-run <code>fetch-secrets.sh</code> (with a fresh OTP),
-restart the container.</p>
+no never-rotate key to guard. To rotate any secret: edit
+<code>broker-secrets.vars</code>, re-run
+<code>set-broker-secrets.sh</code> (Step 13a), then re-fetch on the box
+(with a fresh OTP) and restart the container.</p>
 </blockquote>
 <hr />
-<h2 id="part-4-deploy-the-shared-broker-worker">Part 4 — Deploy the
-shared broker Worker</h2>
+<h2 id="part-4-deploy-the-broker-and-set-its-secrets">Part 4 — Deploy
+the broker and set its secrets</h2>
 <p>The broker source lives in this repo at <code>secrets-broker/</code>.
 <code>secrets.tjw.dev</code> is redeployed from here.</p>
 <p><strong>Step 12.</strong> Confirm
-<code>secrets-broker/wrangler.toml</code>. The
-<code>[[secrets_store_secrets]]</code> blocks bind the five
-<code>pr-agent-*</code> secrets to the Worker, all sharing the account
-<code>store_id</code>, and the route is the custom domain
-<code>secrets.tjw.dev</code>. The <code>pr-agent</code> namespace is
-registered in <code>secrets-broker/src/index.ts</code>
-(<code>BUNDLES[&quot;pr-agent&quot;]</code>). The file deliberately carries no
-<code>[vars]</code> block — <code>[vars]</code> would deploy plaintext
-values and collide with the Secrets Store bindings; test stubs live in
-<code>vitest.config.ts</code>, not here.</p>
-<blockquote>
-<p>All five <code>pr-agent-*</code> secrets from Part 3 must exist in
-the store before deploy, or <code>wrangler deploy</code> fails resolving
-the bindings.</p>
-</blockquote>
+<code>secrets-broker/wrangler.toml</code>: the route is the custom
+domain <code>secrets.tjw.dev</code>, <code>workers_dev = false</code>,
+and the only binding is <code>OTP_KV</code>. The five app secrets are
+<strong>not</strong> declared here — they are Worker secrets set in Step
+13a. The <code>pr-agent</code> namespace is registered in
+<code>secrets-broker/src/index.ts</code>
+(<code>BUNDLES[&quot;pr-agent&quot;]</code>). No <code>[vars]</code> block — that
+would deploy plaintext and collide with the Worker secrets.</p>
 <p><strong>Step 12a — Create the OTP KV namespace.</strong> The broker
 enforces a single-use OTP per fetch (see <code>recovery.html</code> and
 the deployment spec), stored in Workers KV.</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv namespace create OTP_KV   <span class="co"># prints an id</span></span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv namespace create OTP_KV   <span class="co"># prints an id</span></span></code></pre></div>
 <p>Put the id into <code>wrangler.toml</code>
 (<code>[[kv_namespaces]]</code> <code>OTP_KV</code>, replacing
 <code>REPLACE_WITH_OTP_KV_ID</code>) and into
-<code>deploy/cloud-init.vars</code> as <code>OTP_KV_ID</code>. Scope the
-wrangler API token used for <strong>minting</strong> to KV write on this
-namespace only (least privilege) — the Worker itself only reads and
-deletes. <code>workers_dev = false</code> in <code>wrangler.toml</code>
-keeps the broker reachable solely via the Access-gated
-<code>secrets.tjw.dev</code> (no <code>*.workers.dev</code> bypass
-route).</p>
+<code>deploy/cloud-init.vars</code> as <code>OTP_KV_ID</code>.
+<code>workers_dev = false</code> keeps the broker reachable solely via
+the Access-gated <code>secrets.tjw.dev</code> (no
+<code>*.workers.dev</code> bypass route).</p>
 <p><strong>Step 13.</strong> Deploy (wrangler v4):</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler deploy</span></code></pre></div>
-<p><strong>Step 13a — Set the GitHub App PEM as a Worker
-secret.</strong> Now that the Worker exists, set the PEM (too large for
-the Secrets Store) as a Worker secret, base64-encoded and
-<strong>piped</strong> so it never lands in shell history or
-<code>ps</code>:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">openssl</span> base64 <span class="at">-A</span> <span class="at">-in</span> pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem <span class="kw">|</span> <span class="ex">npx</span> wrangler secret put GITHUB_APP_PRIVATE_KEY</span></code></pre></div>
-<p>The broker reads it as a plain string (no code change), and
-<code>fetch-secrets.sh</code> decodes it
-(<code>openssl base64 -d -A</code>) back to the real multi-line PEM
-before <code>podman secret create</code>. Confirm it’s set:
-<code>npx wrangler secret list</code> shows
-<code>GITHUB_APP_PRIVATE_KEY</code>.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler deploy</span></code></pre></div>
+<p><strong>Step 13a — Set the five app secrets (one command).</strong>
+Now that the Worker exists, set all five Worker secrets from your
+<code>broker-secrets.vars</code>:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> deploy/set-broker-secrets.sh</span></code></pre></div>
+<p>It pipes each value to <code>wrangler secret put</code> (so nothing
+lands in shell history or <code>ps</code>), base64-encodes the PEM from
+its file, and sends the tunnel cred verbatim. Re-run it any time to
+rotate. Confirm:
+<code>(cd secrets-broker &amp;&amp; npx wrangler secret list)</code>
+lists <code>DEEPSEEK_API_KEY</code>, <code>GITHUB_APP_ID</code>,
+<code>GITHUB_WEBHOOK_SECRET</code>, <code>TUNNEL_CRED</code>,
+<code>GITHUB_APP_PRIVATE_KEY</code>. <code>fetch-secrets.sh</code> on
+the box decodes the base64 PEM back to the real multi-line key before
+<code>podman secret create</code>.</p>
 <p><strong>Step 14 — Confirm Access is enforced on the broker.</strong>
 An unauthenticated request must be blocked:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-si</span> https://secrets.tjw.dev/secrets/pr-agent <span class="kw">|</span> <span class="fu">head</span> <span class="at">-5</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Expect HTTP 302 (login redirect) or 403 — NOT 200. The Worker is never reached without the token.</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-si</span> https://secrets.tjw.dev/secrets/pr-agent <span class="kw">|</span> <span class="fu">head</span> <span class="at">-5</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Expect HTTP 302 (login redirect) or 403 — NOT 200. The Worker is never reached without the token.</span></span></code></pre></div>
 <hr />
 <h2 id="part-5-verify-a-full-fetch-with-the-service-token">Part 5 —
 Verify a full fetch with the service token</h2>
@@ -551,22 +538,22 @@ requires a single-use OTP in addition to the service token —
 <code>gen-cloud-init.sh</code> mints one automatically at provision
 time; to test by hand, mint one and pass it (a second call with the same
 OTP returns 410, proving consume-once):</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv key put <span class="at">--namespace-id</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$OTP_KV_ID</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsS</span> https://secrets.tjw.dev/secrets/pr-agent <span class="dt">\</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Id: </span><span class="va">$CF_SERVICE_TOKEN_ID</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Secret: </span><span class="va">$CF_SERVICE_TOKEN_SECRET</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;X-Secrets-OTP: </span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;keys&#39;</span></span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv key put <span class="at">--namespace-id</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$OTP_KV_ID</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsS</span> https://secrets.tjw.dev/secrets/pr-agent <span class="dt">\</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Id: </span><span class="va">$CF_SERVICE_TOKEN_ID</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Secret: </span><span class="va">$CF_SERVICE_TOKEN_SECRET</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;X-Secrets-OTP: </span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;keys&#39;</span></span></code></pre></div>
 <p>You should see all five keys:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;DEEPSEEK_API_KEY&quot;</span><span class="ot">,</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_ID&quot;</span><span class="ot">,</span></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_PRIVATE_KEY&quot;</span><span class="ot">,</span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_WEBHOOK_SECRET&quot;</span><span class="ot">,</span></span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;TUNNEL_CRED&quot;</span></span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;DEEPSEEK_API_KEY&quot;</span><span class="ot">,</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_ID&quot;</span><span class="ot">,</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_PRIVATE_KEY&quot;</span><span class="ot">,</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_WEBHOOK_SECRET&quot;</span><span class="ot">,</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;TUNNEL_CRED&quot;</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div>
 <p>All five present and non-empty confirms the bindings are wired. The
 broker serves only <code>/secrets/&lt;namespace&gt;</code> for a
 registered namespace, only when Cloudflare Access has injected the

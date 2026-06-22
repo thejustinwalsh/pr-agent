@@ -426,26 +426,25 @@ and delete the old.</p>
 <code>GITHUB_APP__PRIVATE_KEY</code>. It is <strong>multi-line</strong>,
 which matters for how it is stored and injected:</p>
 <ul>
-<li><p>The PEM does <strong>not</strong> go in the Secrets Store — a
-base64 RSA-2048 key (~2.2 KB) exceeds the Store’s 1024-char value limit.
-Store it as a <strong>Worker secret</strong> on the broker
-(<code>cloudflare.html</code> Step 11a), base64-encoded so it stays
-single-line and JSON-safe through the broker. From
-<code>secrets-broker/</code>, after the Worker is deployed, pipe it in
-(so it never lands in your shell history or <code>ps</code>):</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">openssl</span> base64 <span class="at">-A</span> <span class="at">-in</span> pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem <span class="kw">|</span> <span class="ex">npx</span> wrangler secret put GITHUB_APP_PRIVATE_KEY</span></code></pre></div>
-<p><code>fetch-secrets.sh</code> decodes it back to the real multi-line
-PEM (<code>openssl base64 -d -A</code>) before
-<code>podman secret create</code>, and the quadlet maps it
+<li>The PEM is stored as a <strong>Worker secret</strong> on the broker
+(not the Secrets Store — a base64 RSA-2048 key is ~2.2 KB, over the
+Store’s 1024-char cap). You do not run <code>wrangler</code> by hand:
+just point <code>deploy/broker-secrets.vars</code> at the downloaded
+file —
+<code>GITHUB_APP_PRIVATE_KEY_FILE=~/Downloads/pr-agent.&lt;date&gt;.private-key.pem</code>
+— and <code>deploy/set-broker-secrets.sh</code> (cloudflare runbook Step
+13a) base64-encodes it and sets it for you.
+<code>fetch-secrets.sh</code> on the box decodes it
+(<code>openssl base64 -d -A</code>) back to the real multi-line PEM
+before <code>podman secret create</code>, and the quadlet maps it
 <code>type=env,target=GITHUB_APP__PRIVATE_KEY</code>, so the container
-sees the intact key. (Encode → decode is lossless; verify with
-<code>openssl base64 -A -in key.pem | openssl base64 -d -A | diff - key.pem</code>.)</p></li>
-<li><p>If you are bootstrapping by hand (broker unreachable), do
+sees the intact key.</li>
+<li>If you are bootstrapping by hand (broker unreachable), do
 <strong>not</strong> base64-encode and do <strong>not</strong> paste at
 a prompt. Pass the downloaded file to
 <code>deploy/bootstrap-secrets.sh /path/to/pr-agent.&lt;date&gt;.private-key.pem</code>;
 it feeds the raw <code>.pem</code> straight into
-<code>podman secret create</code> so newlines survive.</p></li>
+<code>podman secret create</code> so newlines survive.</li>
 </ul>
 <blockquote>
 <p><strong>Never commit the PEM.</strong> It is the App’s identity;

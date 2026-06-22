@@ -354,14 +354,16 @@ It:</p>
 (HMAC-gated by the webhook secret) and the shared broker
 <code>secrets.tjw.dev</code> <strong>Access-gated</strong> by the
 <code>pr-agent-server</code> service token.</li>
-<li>Populates the four small <code>pr-agent-*</code> secrets in the
-account Secrets Store, and sets the GitHub App PEM as a <strong>Worker
-secret</strong> (it exceeds the Store’s 1024-char limit).</li>
 <li>Creates the <code>OTP_KV</code> namespace (Step 12a), sets its id in
 <code>wrangler.toml</code> + <code>deploy/cloud-init.vars</code>, then
 deploys the shared broker Worker (serving the <code>pr-agent</code>
-namespace, single-use OTP enforced, <code>workers_dev = false</code>)
-and verifies a full fetch with a hand-minted OTP.</li>
+namespace, single-use OTP enforced,
+<code>workers_dev = false</code>).</li>
+<li>Sets the five <code>pr-agent</code> app secrets as <strong>Worker
+secrets</strong> with one script
+(<code>deploy/set-broker-secrets.sh</code>, Step 13a) — no Secrets
+Store, no dashboard — and verifies a full fetch with a hand-minted
+OTP.</li>
 </ol>
 <p><strong>Deploy the broker before provisioning the box</strong>
 (Section 3): a fresh box’s first boot fetches from it. After this

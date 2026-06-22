@@ -19,9 +19,9 @@ interface OtpKv {
 }
 
 export interface Env {
-  // pr-agent namespace. Most are Secrets Store bindings (objects); the PEM is a
-  // plain Worker secret (string) because it exceeds the Secrets Store size limit —
-  // resolve() handles both. See wrangler.toml.
+  // pr-agent namespace. All five are Cloudflare Worker secrets (plain strings),
+  // set by deploy/set-broker-secrets.sh. resolve() also accepts Secrets Store
+  // objects, so a future namespace could mix the two. See wrangler.toml.
   DEEPSEEK_API_KEY: SecretsBinding;
   GITHUB_APP_PRIVATE_KEY: SecretsBinding;
   GITHUB_APP_ID: SecretsBinding;
