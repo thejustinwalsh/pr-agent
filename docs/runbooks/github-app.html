@@ -426,19 +426,29 @@ and delete the old.</p>
 <code>GITHUB_APP__PRIVATE_KEY</code>. It is <strong>multi-line</strong>,
 which matters for how it is stored and injected:</p>
 <ul>
-<li>In the <strong>Secrets Store</strong>, paste the PEM as a JSON-safe
-string — the broker returns it as a JSON string with <code>\n</code> for
-the newlines, <code>fetch-secrets.sh</code> decodes it back to real
-newlines with <code>jq -er</code>, and <code>podman secret create</code>
-stores those raw bytes verbatim. The quadlet maps it
+<li><p>In the <strong>Secrets Store</strong>, paste the PEM
+<strong>verbatim, with its real line breaks</strong> — do
+<strong>not</strong> convert it to a single <code>\n</code>-escaped
+line. The value field is multi-line; paste the whole
+<code>-----BEGIN…-----END-----</code> block as-is. On macOS:
+<code>pbcopy &lt; pr-agent.&lt;date&gt;.private-key.pem</code>, then
+paste. The broker JSON-encodes it on the wire (real newlines become
+<code>\n</code> automatically via <code>Response.json</code>),
+<code>fetch-secrets.sh</code> decodes them back with
+<code>jq -er</code>, and <code>podman secret create</code> stores the
+raw bytes. The quadlet maps it
 <code>type=env,target=GITHUB_APP__PRIVATE_KEY</code>, so the container
-sees the intact multi-line key.</li>
-<li>If you are bootstrapping by hand (broker unreachable), do
+sees the intact multi-line key. If you pre-escape it to literal
+<code>\n</code>, it decodes to a single broken line and JWT signing
+fails. Verify the round-trip before trusting it:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">diff</span> <span class="op">&lt;(</span><span class="ex">jq</span> <span class="at">-Rs</span> . <span class="op">&lt;</span> pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem <span class="kw">|</span> <span class="ex">jq</span> <span class="at">-er</span> .<span class="op">)</span> pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co"># no output (or only a trailing-newline diff) = the stored value will decode to a valid PEM</span></span></code></pre></div></li>
+<li><p>If you are bootstrapping by hand (broker unreachable), do
 <strong>not</strong> try to paste a multi-line key at a prompt. Pass the
 downloaded file to
 <code>deploy/bootstrap-secrets.sh /path/to/pr-agent.&lt;date&gt;.private-key.pem</code>;
 it feeds the file straight into <code>podman secret create</code> so
-newlines survive.</li>
+newlines survive.</p></li>
 </ul>
 <blockquote>
 <p><strong>Never commit the PEM.</strong> It is the App’s identity;

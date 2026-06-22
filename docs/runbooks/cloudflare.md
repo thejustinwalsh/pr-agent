@@ -130,12 +130,12 @@ Store them in your password manager. They are supplied to `deploy/gen-cloud-init
 | Secret name | Value | Source |
 |---|---|---|
 | `pr-agent-deepseek-key` | DeepSeek API key | DeepSeek dashboard → `OPENAI__KEY` |
-| `pr-agent-github-app-key` | GitHub App private-key PEM (newlines as `\n` in the JSON string) | `github-app.html` Step 8 → `GITHUB_APP__PRIVATE_KEY` |
+| `pr-agent-github-app-key` | GitHub App private-key PEM, **pasted verbatim with real line breaks** (not `\n`-escaped) | `github-app.html` Step 8 → `GITHUB_APP__PRIVATE_KEY` |
 | `pr-agent-github-app-id` | GitHub App ID (number) | `github-app.html` Step 7 → `GITHUB_APP__APP_ID` |
 | `pr-agent-webhook-secret` | Webhook HMAC secret | `github-app.html` Step 3 → `GITHUB__WEBHOOK_SECRET` |
 | `pr-agent-tunnel-cred` | Tunnel credential JSON (one line) | Step 3 above → cloudflared mount |
 
-> **The PEM is multi-line.** Stored in the Secrets Store it is a JSON string with `\n` escapes; the broker returns it as JSON, `fetch-secrets.sh` decodes it with `jq -er` back to real newlines, and `podman secret create` stores the raw bytes. There is no AES `ENCRYPTION_KEY` here — PR-Agent is stateless and keeps no database, so there is nothing to encrypt and no never-rotate key to guard. All five of these secrets are rotatable: change the value in the store, re-run `fetch-secrets.sh`, restart the container.
+> **The PEM is multi-line.** Store it with its **real line breaks** (paste the raw file; do not pre-escape to a single `\n` line). The broker JSON-encodes it on the wire — real newlines become `\n` automatically — and `fetch-secrets.sh` decodes them back with `jq -er` before `podman secret create` stores the raw bytes. Pre-escaping breaks it (it decodes to literal backslash-`n`). Verify with `diff <(jq -Rs . < key.pem | jq -er .) key.pem`. There is no AES `ENCRYPTION_KEY` here — PR-Agent is stateless and keeps no database, so there is nothing to encrypt and no never-rotate key to guard. All five of these secrets are rotatable: change the value in the store, re-run `fetch-secrets.sh`, restart the container.
 
 ---
 
