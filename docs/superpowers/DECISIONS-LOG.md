@@ -35,3 +35,11 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Decision:** `pragent.pod` + `pr-agent.container` (ContainerName, floating `:current`, env + secret→env mappings, no volume) + `pr-agent-cloudflared.container`; `render-config.sh` rewritten POSIX (`#!/bin/sh`, `set -eu`, `.` not `source`). Orchestrator added `CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]` (agent omitted it under the strict file list); `custom_model_max_tokens>0` covers both v4-pro and the v4-flash fallback since neither is in MAX_TOKENS.
 - **Affected:** `deploy/quadlet/*`, `deploy/cloudflared/config.yml.template`, `deploy/render-config.sh`, `deploy/tests/quadlet.bats`.
 - **Revisit:** v4-pro context window (shared with WS-A).
+
+## 2026-06-22 — Build closeout (decisions-log review)
+- **WS-D/E/F/G/H/I verified + committed.** Sonnet was overloaded (all 6 first-wave agents 529'd, 0 tokens); re-ran the horde on Opus successfully. No deliverable content affected.
+- **node_modules leak fixed:** `git add -A` had committed `secrets-broker/node_modules` (90 MB workerd binary) since the PR-Agent Python `.gitignore` didn't cover it. Untracked + gitignored (`**/node_modules/`); cloud-init clone made shallow (`--depth 1`) so the box never pulls the historical blob. (Full history purge optional; shallow clone sidesteps it.)
+- **Integration boot caught an unpushed `production` branch** — cloud-init clones from GitHub, so `production` had to be pushed to the fork. Pushed; re-boot ALL PASS.
+- **Verified end-to-end in OrbStack:** image build, webhook 200 smoke, quadlet dry-run, full cloud-init integration boot. See DEPLOYABILITY.md.
+- **Residual operator TODOs (in DEPLOYABILITY.md):** set v4-pro `custom_model_max_tokens`; create GitHub App; Cloudflare tunnel + Access-exempt webhook + secrets broker (store_id) + service token; Hetzner CX22 w/ IPv4; ghcr package public after first build; fill `TUNNEL_ID`.
+- **No model-forcing source patch needed** (WS-A): env reliably pins the model; `patches/apply.sh` ships as a fail-loud no-op contract guard.
