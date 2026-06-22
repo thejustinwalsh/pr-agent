@@ -36,10 +36,12 @@ git push -u origin production
 
 ### Step 3 — Verify CI and build the first image
 
-Push `production` with `.github/workflows/` in place. At `https://github.com/thejustinwalsh/pr-agent/actions`, confirm both workflows appear (`sync` and `build`). Trigger a sync to confirm it reaches the right upstream:
+Push `production` with `.github/workflows/` in place. At `https://github.com/thejustinwalsh/pr-agent/actions`, confirm both workflows appear (`sync-upstream` and `build-image`). Trigger a sync to confirm it reaches the right upstream:
 
 ```bash
-gh workflow run sync --repo thejustinwalsh/pr-agent
+# `gh workflow run` matches the workflow's name/filename/ID, not the basename —
+# the workflow is named `sync-upstream` (file: sync.yml), so `sync` won't resolve.
+gh workflow run sync-upstream --repo thejustinwalsh/pr-agent --ref production
 ```
 
 Create a release tag matching upstream to trigger the build:
@@ -49,7 +51,7 @@ gh release create v0.37.0 --repo thejustinwalsh/pr-agent \
   --title "v0.37.0" --notes "Initial production build"
 ```
 
-The `build` workflow runs `patches/apply.sh` (a fail-loud no-op asserting codemod — PR-Agent honors `CONFIG__MODEL`/`OPENAI__API_BASE` without a source rewrite) and builds `docker/Dockerfile --target github_app` → `ghcr.io/thejustinwalsh/pr-agent:<tag>` + `latest`.
+The `build-image` workflow runs `patches/apply.sh` (a fail-loud no-op asserting codemod — PR-Agent honors `CONFIG__MODEL`/`OPENAI__API_BASE` without a source rewrite) and builds `docker/Dockerfile --target github_app` → `ghcr.io/thejustinwalsh/pr-agent:<tag>` + `latest`.
 
 ### Step 4 — Make the package public and verify an anonymous pull
 
@@ -66,11 +68,11 @@ podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0   # must pull with no login
 **Complete `cloudflare.html` in full now.** It:
 
 1. Creates the `pr-agent` tunnel and the `pr-agent.tjw.dev` DNS route (ingress → `http://localhost:3000`).
-2. Keeps `pr-agent.tjw.dev` **Access-EXEMPT** (HMAC-gated by the webhook secret) and `pr-agent-secrets.tjw.dev` **Access-gated** by the `pr-agent-server` service token.
-3. Populates the five `pr-agent-*` secrets in the shared account Secrets Store.
-4. Deploys the broker Worker and verifies a full fetch.
+2. Keeps `pr-agent.tjw.dev` **Access-EXEMPT** (HMAC-gated by the webhook secret) and the shared broker `secrets.tjw.dev` **Access-gated** by the `pr-agent-server` service token.
+3. Populates the five `pr-agent-*` secrets in the account Secrets Store.
+4. Deploys the shared broker Worker (serving the `pr-agent` namespace) and verifies a full fetch.
 
-After it you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, and `pr-agent-secrets.tjw.dev/secrets` returning the five keys with the token.
+After it you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, and `secrets.tjw.dev/secrets/pr-agent` returning the five keys with the token.
 
 ### Step 5 — Set the v4-pro context window (MANDATORY)
 

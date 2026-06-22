@@ -147,7 +147,7 @@
     },
     {
       "type": "text", "id": "broker-l", "x": 710, "y": 374, "width": 180, "height": 68,
-      "text": "Secrets broker\npr-agent-secrets.tjw.dev\nACCESS-GATED (token)", "originalText": "Secrets broker\npr-agent-secrets.tjw.dev\nACCESS-GATED (token)",
+      "text": "Secrets broker\nsecrets.tjw.dev\nACCESS-GATED (token)", "originalText": "Secrets broker\nsecrets.tjw.dev\nACCESS-GATED (token)",
       "fontSize": 11, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
       "strokeColor": "#e6edf3", "backgroundColor": "transparent", "fillStyle": "solid",
       "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0,

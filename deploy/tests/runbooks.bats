@@ -54,9 +54,15 @@ R="${BATS_TEST_DIRNAME}/../../docs/runbooks"
   grep -qi "HMAC" "$R/cloudflare.html"
 }
 
-@test "cloudflare runbook keeps the secrets broker Access-gated by a service token" {
-  grep -qi "pr-agent-secrets.tjw.dev" "$R/cloudflare.html"
+@test "cloudflare runbook keeps the shared secrets broker Access-gated by a service token" {
+  grep -qi "secrets.tjw.dev" "$R/cloudflare.html"
   grep -qi "service token" "$R/cloudflare.html"
+  # The retired per-project broker hostname must not linger anywhere.
+  ! grep -qi "pr-agent-secrets.tjw.dev" "$R/cloudflare.html"
+}
+
+@test "cloudflare runbook documents the path-scoped namespace endpoint" {
+  grep -qi "/secrets/pr-agent" "$R/cloudflare.html"
 }
 
 @test "setup runbook flags the mandatory custom_model_max_tokens for deepseek-v4-pro" {
