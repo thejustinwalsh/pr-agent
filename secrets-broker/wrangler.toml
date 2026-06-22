@@ -5,6 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 routes = [
   { pattern = "secrets.tjw.dev", custom_domain = true }
 ]
+# Reachable ONLY via the Access-gated custom domain — no *.workers.dev bypass route.
+workers_dev = false
 
 # Shared secrets broker (secrets.tjw.dev), path-scoped per namespace. Each binding
 # below is a value in the `pr-agent` bundle (src/index.ts BUNDLES["pr-agent"]).
@@ -41,6 +43,13 @@ secret_name = "pr-agent-webhook-secret"
 binding = "TUNNEL_CRED"
 store_id = "a82a58437ef14b80bcba87a7d5589377"
 secret_name = "pr-agent-tunnel-cred"
+
+# OTP single-use store. The Worker only reads + deletes (minting is CLI-only:
+# wrangler kv key put). Create with `wrangler kv namespace create OTP_KV` and
+# paste the returned id here (and into deploy/cloud-init.vars as OTP_KV_ID).
+[[kv_namespaces]]
+binding = "OTP_KV"
+id = "REPLACE_WITH_OTP_KV_ID"
 
 
 # NOTE: no [vars] here on purpose. `[vars]` would be deployed to the Worker as
