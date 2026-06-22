@@ -506,11 +506,12 @@ the deployment spec), stored in Workers KV.</p>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv namespace create OTP_KV   <span class="co"># prints an id</span></span></code></pre></div>
 <p>Put the id into <code>wrangler.toml</code>
 (<code>[[kv_namespaces]]</code> <code>OTP_KV</code>, replacing
-<code>REPLACE_WITH_OTP_KV_ID</code>) and into
-<code>deploy/cloud-init.vars</code> as <code>OTP_KV_ID</code>.
-<code>workers_dev = false</code> keeps the broker reachable solely via
-the Access-gated <code>secrets.tjw.dev</code> (no
-<code>*.workers.dev</code> bypass route).</p>
+<code>REPLACE_WITH_OTP_KV_ID</code>) and commit it — that’s the only
+place it’s needed; <code>gen-cloud-init.sh</code> reads it from there
+via <code>--binding OTP_KV</code>. <code>workers_dev = false</code>
+keeps the broker reachable solely via the Access-gated
+<code>secrets.tjw.dev</code> (no <code>*.workers.dev</code> bypass
+route).</p>
 <p><strong>Step 13 — Deploy</strong> (wrangler v4):</p>
 <div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install</span>

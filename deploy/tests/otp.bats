@@ -18,10 +18,9 @@ CF_SERVICE_TOKEN_ID=tid
 CF_SERVICE_TOKEN_SECRET=tsec
 FORK_REPO=thejustinwalsh/pr-agent
 TUNNEL_ID=00000000-0000-0000-0000-000000000000
-OTP_KV_ID=kvid123
 SECRETS_NS=pr-agent
 EOF
-  export WRANGLER="$BIN/wrangler"
+  export WRANGLER="$BIN/wrangler" BROKER_DIR="$TMP"
   OUT="$TMP/out.yaml"
 }
 teardown() { rm -rf "$TMP"; }
@@ -48,9 +47,9 @@ teardown() { rm -rf "$TMP"; }
   [ ! -f "$OUT" ]
 }
 
-@test "fails when OTP_KV_ID is unset" {
-  grep -v '^OTP_KV_ID=' "$TMP/vars" > "$TMP/vars2"
-  run bash "$BATS_TEST_DIRNAME/../gen-cloud-init.sh" "$TMP/vars2" "$OUT"
-  [ "$status" -ne 0 ]
-  [ ! -f "$OUT" ]
+@test "uses --binding OTP_KV (reads the id from wrangler.toml; no OTP_KV_ID in vars)" {
+  ! grep -q OTP_KV_ID "$TMP/vars"
+  run bash "$BATS_TEST_DIRNAME/../gen-cloud-init.sh" "$TMP/vars" "$OUT"
+  [ "$status" -eq 0 ]
+  grep -q 'kv key put --binding OTP_KV' "$WLOG"
 }

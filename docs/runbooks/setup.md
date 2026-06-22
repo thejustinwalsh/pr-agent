@@ -70,10 +70,10 @@ podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0   # must pull with no login
 
 1. Creates the `pr-agent` tunnel and the `pr-agent.tjw.dev` DNS route (ingress → `http://localhost:3000`).
 2. Keeps `pr-agent.tjw.dev` **Access-EXEMPT** (HMAC-gated by the webhook secret) and the shared broker `secrets.tjw.dev` **Access-gated** by the `pr-agent-server` service token.
-3. Creates the `OTP_KV` namespace (Step 12), sets its id in `wrangler.toml` + `deploy/cloud-init.vars`, then deploys the shared broker Worker (serving the `pr-agent` namespace, single-use OTP enforced, `workers_dev = false`).
+3. Creates the `OTP_KV` namespace (Step 12), sets its id in `wrangler.toml`, then deploys the shared broker Worker (serving the `pr-agent` namespace, single-use OTP enforced, `workers_dev = false`).
 4. Sets the five `pr-agent` app secrets as **Worker secrets** with one script (`deploy/set-broker-secrets.sh`, Step 14) — no Secrets Store, no dashboard — and verifies a full fetch with a hand-minted OTP.
 
-**Deploy the broker before provisioning the box** (Section 3): a fresh box's first boot fetches from it. After this section you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, the `OTP_KV_ID` (from `wrangler kv namespace create OTP_KV`), and `secrets.tjw.dev/secrets/pr-agent` returning the five keys for a valid OTP.
+**Deploy the broker before provisioning the box** (Section 3): a fresh box's first boot fetches from it. After this section you have: `CF_SERVICE_TOKEN_ID` / `CF_SERVICE_TOKEN_SECRET` in your password manager, the `TUNNEL_ID` (UUID) in `deploy/config.env`, the `OTP_KV` namespace id committed in `secrets-broker/wrangler.toml`, and `secrets.tjw.dev/secrets/pr-agent` returning the five keys for a valid OTP.
 
 ### Step 5 — v4-pro context window (already set — no action)
 
@@ -85,7 +85,7 @@ Nothing to do here; this is called out only so you know why an unlisted model wo
 
 ### Step 6 — Render the cloud-init document
 
-On your Mac, create `deploy/cloud-init.vars` (git-ignored). `OTP_KV_ID` is the id from `wrangler kv namespace create OTP_KV` (Section 2, Step 12):
+On your Mac, create `deploy/cloud-init.vars` (git-ignored):
 
 ```bash
 cat > deploy/cloud-init.vars <<'EOF'
@@ -93,12 +93,11 @@ CF_SERVICE_TOKEN_ID=<your CF_SERVICE_TOKEN_ID>
 CF_SERVICE_TOKEN_SECRET=<your CF_SERVICE_TOKEN_SECRET>
 FORK_REPO=thejustinwalsh/pr-agent
 TUNNEL_ID=<your TUNNEL_UUID>
-OTP_KV_ID=<your OTP_KV namespace id>
 SECRETS_NS=pr-agent
 EOF
 ```
 
-Render it. `gen-cloud-init.sh` **mints a single-use OTP** (`wrangler kv key put`, 1h TTL) into the `OTP_KV` namespace and injects it — so `wrangler` must be authenticated (Prerequisites) and the broker must already be deployed (Section 2). A failed mint emits no file:
+Render it. `gen-cloud-init.sh` **mints a single-use OTP** (`wrangler kv key put`, 1h TTL) into the `OTP_KV` namespace and injects it — so `wrangler` must be authenticated (Prerequisites) and the broker must already be deployed (Section 2). It reads the KV id from `secrets-broker/wrangler.toml` (`--binding OTP_KV`), so there's no `OTP_KV_ID` to set. A failed mint emits no file:
 
 ```bash
 bash deploy/gen-cloud-init.sh deploy/cloud-init.vars /tmp/cloud-init-pr-agent.yaml

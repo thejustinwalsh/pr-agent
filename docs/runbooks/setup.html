@@ -355,9 +355,8 @@ It:</p>
 <code>secrets.tjw.dev</code> <strong>Access-gated</strong> by the
 <code>pr-agent-server</code> service token.</li>
 <li>Creates the <code>OTP_KV</code> namespace (Step 12), sets its id in
-<code>wrangler.toml</code> + <code>deploy/cloud-init.vars</code>, then
-deploys the shared broker Worker (serving the <code>pr-agent</code>
-namespace, single-use OTP enforced,
+<code>wrangler.toml</code>, then deploys the shared broker Worker
+(serving the <code>pr-agent</code> namespace, single-use OTP enforced,
 <code>workers_dev = false</code>).</li>
 <li>Sets the five <code>pr-agent</code> app secrets as <strong>Worker
 secrets</strong> with one script
@@ -369,8 +368,8 @@ no dashboard — and verifies a full fetch with a hand-minted OTP.</li>
 section you have: <code>CF_SERVICE_TOKEN_ID</code> /
 <code>CF_SERVICE_TOKEN_SECRET</code> in your password manager, the
 <code>TUNNEL_ID</code> (UUID) in <code>deploy/config.env</code>, the
-<code>OTP_KV_ID</code> (from
-<code>wrangler kv namespace create OTP_KV</code>), and
+<code>OTP_KV</code> namespace id committed in
+<code>secrets-broker/wrangler.toml</code>, and
 <code>secrets.tjw.dev/secrets/pr-agent</code> returning the five keys
 for a valid OTP.</p>
 <h3 id="step-5-v4-pro-context-window-already-set-no-action">Step 5 —
@@ -390,22 +389,22 @@ a different window.</p>
 <h3 id="step-6-render-the-cloud-init-document">Step 6 — Render the
 cloud-init document</h3>
 <p>On your Mac, create <code>deploy/cloud-init.vars</code>
-(git-ignored). <code>OTP_KV_ID</code> is the id from
-<code>wrangler kv namespace create OTP_KV</code> (Section 2, Step
-12):</p>
+(git-ignored):</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> <span class="op">&gt;</span> deploy/cloud-init.vars <span class="op">&lt;&lt;&#39;EOF&#39;</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_ID=&lt;your CF_SERVICE_TOKEN_ID&gt;</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="st">CF_SERVICE_TOKEN_SECRET=&lt;your CF_SERVICE_TOKEN_SECRET&gt;</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="st">FORK_REPO=thejustinwalsh/pr-agent</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="st">TUNNEL_ID=&lt;your TUNNEL_UUID&gt;</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="st">OTP_KV_ID=&lt;your OTP_KV namespace id&gt;</span></span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="st">SECRETS_NS=pr-agent</span></span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="op">EOF</span></span></code></pre></div>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="st">SECRETS_NS=pr-agent</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="op">EOF</span></span></code></pre></div>
 <p>Render it. <code>gen-cloud-init.sh</code> <strong>mints a single-use
 OTP</strong> (<code>wrangler kv key put</code>, 1h TTL) into the
 <code>OTP_KV</code> namespace and injects it — so <code>wrangler</code>
 must be authenticated (Prerequisites) and the broker must already be
-deployed (Section 2). A failed mint emits no file:</p>
+deployed (Section 2). It reads the KV id from
+<code>secrets-broker/wrangler.toml</code>
+(<code>--binding OTP_KV</code>), so there’s no <code>OTP_KV_ID</code> to
+set. A failed mint emits no file:</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> deploy/gen-cloud-init.sh deploy/cloud-init.vars /tmp/cloud-init-pr-agent.yaml</span></code></pre></div>
 <p>You should see
 <code>gen-cloud-init: wrote /tmp/cloud-init-pr-agent.yaml (XXXX bytes)</code>

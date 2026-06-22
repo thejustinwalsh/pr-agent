@@ -155,7 +155,7 @@ cd secrets-broker
 npx wrangler kv namespace create OTP_KV   # prints an id
 ```
 
-Put the id into `wrangler.toml` (`[[kv_namespaces]]` `OTP_KV`, replacing `REPLACE_WITH_OTP_KV_ID`) and into `deploy/cloud-init.vars` as `OTP_KV_ID`. `workers_dev = false` keeps the broker reachable solely via the Access-gated `secrets.tjw.dev` (no `*.workers.dev` bypass route).
+Put the id into `wrangler.toml` (`[[kv_namespaces]]` `OTP_KV`, replacing `REPLACE_WITH_OTP_KV_ID`) and commit it — that's the only place it's needed; `gen-cloud-init.sh` reads it from there via `--binding OTP_KV`. `workers_dev = false` keeps the broker reachable solely via the Access-gated `secrets.tjw.dev` (no `*.workers.dev` bypass route).
 
 **Step 13 — Deploy** (wrangler v4):
 

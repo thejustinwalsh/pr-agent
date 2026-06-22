@@ -8,19 +8,22 @@ VARS="${1:?vars file required}"; OUT="${2:-$HERE/cloud-init.out.yaml}"
 # shellcheck source=/dev/null
 source "$VARS"
 : "${CF_SERVICE_TOKEN_ID:?}"; : "${CF_SERVICE_TOKEN_SECRET:?}"; : "${FORK_REPO:?}"; : "${TUNNEL_ID:?}"
-: "${OTP_KV_ID:?run 'wrangler kv namespace create OTP_KV' and set OTP_KV_ID}"
 SECRETS_NS="${SECRETS_NS:-pr-agent}"
 case "$SECRETS_NS" in *[!a-z0-9-]*|"") echo "gen-cloud-init: bad SECRETS_NS '$SECRETS_NS'" >&2; exit 1;; esac
-WRANGLER="${WRANGLER:-wrangler}"
+BROKER_DIR="${BROKER_DIR:-$HERE/../secrets-broker}"
+read -ra WRANGLER_CMD <<< "${WRANGLER:-npx wrangler}"
 
-# Mint BEFORE rendering: a failed mint must emit no cloud-init.
+# Mint BEFORE rendering: a failed mint must emit no cloud-init. Run from the broker
+# dir so `npx wrangler` resolves the project-local install and `--binding OTP_KV`
+# reads the namespace id from wrangler.toml (no OTP_KV_ID needed here). --remote is
+# REQUIRED: kv key put defaults to LOCAL, which the deployed broker cannot read —
+# the OTP would silently never resolve and every boot would 410.
 OTP="$(openssl rand -hex 32)"
 HASH="$(printf %s "$OTP" | openssl dgst -sha256 -hex | sed 's/^.*= *//')"
 ( set +x
-  # --remote is REQUIRED: kv key put defaults to LOCAL storage, which the deployed
-  # broker cannot read — the OTP would silently never resolve and every boot 410s.
-  "$WRANGLER" kv key put --namespace-id="$OTP_KV_ID" "$HASH" "$SECRETS_NS" --ttl 3600 --remote >/dev/null
-  got="$("$WRANGLER" kv key get --namespace-id="$OTP_KV_ID" "$HASH" --remote)"
+  cd "$BROKER_DIR"
+  "${WRANGLER_CMD[@]}" kv key put --binding OTP_KV "$HASH" "$SECRETS_NS" --ttl 3600 --remote >/dev/null
+  got="$("${WRANGLER_CMD[@]}" kv key get --binding OTP_KV "$HASH" --remote)"
   [ "$got" = "$SECRETS_NS" ] || { echo "gen-cloud-init: KV read-back mismatch" >&2; exit 1; }
 )
 

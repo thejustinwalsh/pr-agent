@@ -3,7 +3,6 @@ CF_SERVICE_TOKEN_ID=
 CF_SERVICE_TOKEN_SECRET=
 FORK_REPO=thejustinwalsh/pr-agent
 TUNNEL_ID=
-# Workers KV namespace id for single-use OTPs (wrangler kv namespace create OTP_KV).
-OTP_KV_ID=
-# Secrets namespace served by the broker (path /secrets/<ns>).
+# Secrets namespace served by the broker (path /secrets/<ns>). Optional — defaults
+# to pr-agent. (No OTP_KV_ID needed: gen-cloud-init reads it from wrangler.toml.)
 SECRETS_NS=pr-agent
