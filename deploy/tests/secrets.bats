@@ -13,6 +13,10 @@ EOF
   chmod +x "$BIN/curl" "$BIN/podman"
   export PATH="$BIN:$PATH" TMP_LOG="$TMP/calls.log"
   export CF_SERVICE_TOKEN_ID=tid CF_SERVICE_TOKEN_SECRET=tsec
+  # Single-use OTP supplied via env by default; OTP_ENV points nowhere so the
+  # script uses the env value. Individual tests override these.
+  export SECRETS_OTP=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  export OTP_ENV="$TMP/nonexistent-otp.env"
 }
 teardown() { rm -rf "$TMP"; }
 
@@ -36,6 +40,24 @@ teardown() { rm -rf "$TMP"; }
   [ "$status" -eq 0 ]
   grep -q "CF-Access-Client-Id: tid" "$TMP/calls.log"
   grep -q "CF-Access-Client-Secret: tsec" "$TMP/calls.log"
+}
+@test "sends the single-use OTP header to the broker" {
+  run bash "$BATS_TEST_DIRNAME/../fetch-secrets.sh"
+  [ "$status" -eq 0 ]
+  grep -q "X-Secrets-OTP: $SECRETS_OTP" "$TMP/calls.log"
+}
+@test "deletes otp.env after a successful fetch" {
+  unset SECRETS_OTP
+  printf 'SECRETS_OTP=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n' > "$TMP/otp.env"
+  export OTP_ENV="$TMP/otp.env"
+  run bash "$BATS_TEST_DIRNAME/../fetch-secrets.sh"
+  [ "$status" -eq 0 ]
+  [ ! -f "$TMP/otp.env" ]
+}
+@test "fails if the OTP is missing (no silent unauth fetch)" {
+  unset SECRETS_OTP
+  run bash "$BATS_TEST_DIRNAME/../fetch-secrets.sh"
+  [ "$status" -ne 0 ]
 }
 @test "does NOT log into ghcr (images are public, anonymous pull)" {
   run bash "$BATS_TEST_DIRNAME/../fetch-secrets.sh"
