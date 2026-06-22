@@ -25,7 +25,7 @@ workers_dev = false
 # paste the returned id here (and into deploy/cloud-init.vars as OTP_KV_ID).
 [[kv_namespaces]]
 binding = "OTP_KV"
-id = "REPLACE_WITH_OTP_KV_ID"
+id = "ae7ba0e4d4ad41799eb58e323450d101"
 
 
 # NOTE: no [vars] here on purpose. `[vars]` would be deployed to the Worker as
