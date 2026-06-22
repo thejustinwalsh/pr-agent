@@ -25,8 +25,8 @@ verify-yaml: ## yamllint our yaml + cloud-init schema
 verify-docker: ## hadolint our Dockerfiles
 	@for f in codevibes-backend/Dockerfile Dockerfile.web; do [ -f $$f ] && hadolint $$f || true; done
 
-verify-actions: ## actionlint workflows
-	@if ls .github/workflows/*.yml >/dev/null 2>&1; then actionlint; else echo "no workflows yet"; fi
+verify-actions: ## actionlint OUR workflows only (upstream's are trusted; its own CI gates them)
+	@actionlint .github/workflows/sync.yml .github/workflows/build.yml
 
 verify-quadlet: ## quadlet dry-run
 	@if ls deploy/quadlet/*.container >/dev/null 2>&1; then \
