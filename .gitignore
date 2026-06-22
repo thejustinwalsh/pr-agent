@@ -19,3 +19,7 @@ poetry.lock
 deploy/cloud-init.out.yaml
 deploy/cloud-init.vars
 deploy/cloudflared/config.yml
+
+# node deps for the secrets-broker Worker — never commit
+**/node_modules/
+secrets-broker/node_modules/
