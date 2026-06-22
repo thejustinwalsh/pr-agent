@@ -510,38 +510,61 @@ values and collide with the Secrets Store bindings; test stubs live in
 the store before deploy, or <code>wrangler deploy</code> fails resolving
 the bindings.</p>
 </blockquote>
-<p><strong>Step 13.</strong> Deploy (wrangler v4):</p>
+<p><strong>Step 12a — Create the OTP KV namespace.</strong> The broker
+enforces a single-use OTP per fetch (see <code>recovery.html</code> and
+the deployment spec), stored in Workers KV.</p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler deploy</span></code></pre></div>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv namespace create OTP_KV   <span class="co"># prints an id</span></span></code></pre></div>
+<p>Put the id into <code>wrangler.toml</code>
+(<code>[[kv_namespaces]]</code> <code>OTP_KV</code>, replacing
+<code>REPLACE_WITH_OTP_KV_ID</code>) and into
+<code>deploy/cloud-init.vars</code> as <code>OTP_KV_ID</code>. Scope the
+wrangler API token used for <strong>minting</strong> to KV write on this
+namespace only (least privilege) — the Worker itself only reads and
+deletes. <code>workers_dev = false</code> in <code>wrangler.toml</code>
+keeps the broker reachable solely via the Access-gated
+<code>secrets.tjw.dev</code> (no <code>*.workers.dev</code> bypass
+route).</p>
+<p><strong>Step 13.</strong> Deploy (wrangler v4):</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> secrets-broker</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler deploy</span></code></pre></div>
 <p><strong>Step 14 — Confirm Access is enforced on the broker.</strong>
 An unauthenticated request must be blocked:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-si</span> https://secrets.tjw.dev/secrets/pr-agent <span class="kw">|</span> <span class="fu">head</span> <span class="at">-5</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Expect HTTP 302 (login redirect) or 403 — NOT 200. The Worker is never reached without the token.</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-si</span> https://secrets.tjw.dev/secrets/pr-agent <span class="kw">|</span> <span class="fu">head</span> <span class="at">-5</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Expect HTTP 302 (login redirect) or 403 — NOT 200. The Worker is never reached without the token.</span></span></code></pre></div>
 <hr />
 <h2 id="part-5-verify-a-full-fetch-with-the-service-token">Part 5 —
 Verify a full fetch with the service token</h2>
-<p><strong>Step 15.</strong> Fetch this project’s namespace using your
-service-token credentials:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsS</span> https://secrets.tjw.dev/secrets/pr-agent <span class="dt">\</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Id: </span><span class="va">$CF_SERVICE_TOKEN_ID</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Secret: </span><span class="va">$CF_SERVICE_TOKEN_SECRET</span><span class="st">&quot;</span> <span class="dt">\</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;keys&#39;</span></span></code></pre></div>
+<p><strong>Step 15.</strong> Fetch this project’s namespace. The broker
+requires a single-use OTP in addition to the service token —
+<code>gen-cloud-init.sh</code> mints one automatically at provision
+time; to test by hand, mint one and pass it (a second call with the same
+OTP returns 410, proving consume-once):</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv key put <span class="at">--namespace-id</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$OTP_KV_ID</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsS</span> https://secrets.tjw.dev/secrets/pr-agent <span class="dt">\</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Id: </span><span class="va">$CF_SERVICE_TOKEN_ID</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;CF-Access-Client-Secret: </span><span class="va">$CF_SERVICE_TOKEN_SECRET</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">-H</span> <span class="st">&quot;X-Secrets-OTP: </span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;keys&#39;</span></span></code></pre></div>
 <p>You should see all five keys:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;DEEPSEEK_API_KEY&quot;</span><span class="ot">,</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_ID&quot;</span><span class="ot">,</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_PRIVATE_KEY&quot;</span><span class="ot">,</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_WEBHOOK_SECRET&quot;</span><span class="ot">,</span></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;TUNNEL_CRED&quot;</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ot">[</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;DEEPSEEK_API_KEY&quot;</span><span class="ot">,</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_ID&quot;</span><span class="ot">,</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_APP_PRIVATE_KEY&quot;</span><span class="ot">,</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;GITHUB_WEBHOOK_SECRET&quot;</span><span class="ot">,</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;TUNNEL_CRED&quot;</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="ot">]</span></span></code></pre></div>
 <p>All five present and non-empty confirms the bindings are wired. The
 broker serves only <code>/secrets/&lt;namespace&gt;</code> for a
-registered namespace, and only when Cloudflare Access has injected the
-<code>Cf-Access-Jwt-Assertion</code> header — a defense-in-depth check
-the Worker enforces in <code>src/index.ts</code>. A request to a
-different or unknown namespace returns 404 and never leaks another
-project’s keys.</p>
+registered namespace, only when Cloudflare Access has injected the
+<code>Cf-Access-Jwt-Assertion</code> header, and only for a valid unused
+OTP — which it burns on use. Any OTP failure (missing, malformed,
+expired, replayed, wrong namespace) returns a uniform 410; a different
+or unknown namespace returns 404 and never leaks another project’s
+keys.</p>
 <hr />
 <h2 id="revocation-kill-switch">Revocation — kill switch</h2>
 <ul>

@@ -359,26 +359,40 @@ pr-agent-github-app-key
 pr-agent-github-app-id
 pr-agent-webhook-secret
 pr-agent-tunnel-cred</code></pre>
+<p><strong>Mint a fresh OTP first.</strong> The boot OTP is single-use
+and was burned (and <code>/etc/pr-agent/otp.env</code> deleted) at first
+boot, so re-running <code>fetch-secrets.sh</code> alone returns 410.
+Mint a new one (from a machine with <code>wrangler</code> auth) and
+write it to <code>otp.env</code> on the box:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="va">OTP</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="ex">openssl</span> rand <span class="at">-hex</span> 32<span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="va">HASH</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">printf</span> %s <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">openssl</span> dgst <span class="at">-sha256</span> <span class="at">-hex</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="st">&#39;s/^.*= *//&#39;</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">npx</span> wrangler kv key put <span class="at">--namespace-id</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$OTP_KV_ID</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$HASH</span><span class="st">&quot;</span> pr-agent <span class="at">--ttl</span> 3600</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># on the box:</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="bu">printf</span> <span class="st">&#39;SECRETS_OTP=%s\n&#39;</span> <span class="st">&quot;</span><span class="va">$OTP</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="fu">sudo</span> tee /etc/pr-agent/otp.env <span class="op">&gt;</span>/dev/null</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> chown pragent:pragent /etc/pr-agent/otp.env <span class="kw">&amp;&amp;</span> <span class="fu">sudo</span> chmod 600 /etc/pr-agent/otp.env</span></code></pre></div>
 <p><strong>Re-run <code>fetch-secrets.sh</code></strong> (the
-service-token env lives in the root-owned file):</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> bash <span class="at">-c</span> <span class="st">&#39;. /etc/pr-agent/cf-service-token.env; su - pragent -c &quot;</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="st">  export XDG_RUNTIME_DIR=/run/user/\$(id -u)</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="st">  set -a</span></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="st">  . /etc/pr-agent/cf-service-token.env</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="st">  ~/pr-agent/deploy/fetch-secrets.sh</span></span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;&#39;</span></span></code></pre></div>
+service-token env lives in the root-owned file;
+<code>fetch-secrets.sh</code> sources <code>otp.env</code> itself and
+deletes it on success):</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> bash <span class="at">-c</span> <span class="st">&#39;. /etc/pr-agent/cf-service-token.env; su - pragent -c &quot;</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="st">  export XDG_RUNTIME_DIR=/run/user/\$(id -u)</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="st">  set -a</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="st">  . /etc/pr-agent/cf-service-token.env</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="st">  ~/pr-agent/deploy/fetch-secrets.sh</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;&#39;</span></span></code></pre></div>
 <p>You should see <code>[fetch-secrets] podman secrets created</code>.
 The multi-line GitHub App PEM rides through as a JSON string and is
 decoded back to real newlines by <code>jq -er</code> before
 <code>podman secret create</code> stores it — no re-encoding, so the key
 arrives in the container intact.</p>
 <p><strong>Broker unreachable?</strong> Fall back to manual bootstrap —
-it reads the multi-line PEM straight from the downloaded file (it cannot
-be typed at a prompt) and prompts for the rest, none echoed:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">~/pr-agent/deploy/bootstrap-secrets.sh</span> /path/to/pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem</span></code></pre></div>
+it bypasses the broker entirely, so it needs <strong>no OTP</strong>. It
+reads the multi-line PEM straight from the downloaded file (it cannot be
+typed at a prompt) and prompts for the rest, none echoed:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">~/pr-agent/deploy/bootstrap-secrets.sh</span> /path/to/pr-agent.<span class="op">&lt;</span>date<span class="op">&gt;</span>.private-key.pem</span></code></pre></div>
 <p><strong>Restart to pick up the refreshed secrets:</strong></p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> restart pr-agent.service pr-agent-cloudflared.service</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> status pr-agent.service</span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> restart pr-agent.service pr-agent-cloudflared.service</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> status pr-agent.service</span></code></pre></div>
 <hr />
 <h2 id="step-4-redeploy-rebuild-from-scratch">Step 4 — Redeploy /
 rebuild from scratch</h2>
@@ -387,9 +401,9 @@ the VM is unhealthy. Because PR-Agent is stateless, rebuilding loses
 nothing — there is no data to preserve.</p>
 <p><strong>4a — In-place redeploy</strong> (pull the latest good tag,
 smoke-test, swap, restart):</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">su</span> <span class="at">-</span> pragent</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">XDG_RUNTIME_DIR</span><span class="op">=</span>/run/user/<span class="va">$(</span><span class="fu">id</span> <span class="at">-u</span><span class="va">)</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> ~/pr-agent/deploy/deploy.sh</span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">su</span> <span class="at">-</span> pragent</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">XDG_RUNTIME_DIR</span><span class="op">=</span>/run/user/<span class="va">$(</span><span class="fu">id</span> <span class="at">-u</span><span class="va">)</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> ~/pr-agent/deploy/deploy.sh</span></code></pre></div>
 <p><code>deploy.sh</code> lists ghcr tags via the REST API, boots the
 candidate in a throwaway container, polls the webhook on a smoke port
 until it answers (and confirms the container is still Up), then swaps
@@ -399,12 +413,12 @@ changes.</p>
 <p><strong>4b — Reinstall the quadlet units</strong> (after editing
 <code>deploy/quadlet/*</code>, e.g. fixing
 <code>CONFIG__CUSTOM_MODEL_MAX_TOKENS</code>):</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ~/pr-agent <span class="kw">&amp;&amp;</span> <span class="fu">git</span> pull origin production</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.pod ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.container ~/.config/containers/systemd/</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.timer ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.service ~/.config/systemd/user/</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="kw">(</span><span class="bu">cd</span> ~/pr-agent/deploy <span class="kw">&amp;&amp;</span> <span class="ex">./render-config.sh</span><span class="kw">)</span>   <span class="co"># re-render cloudflared config</span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> daemon-reload</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> restart pr-agent.service pr-agent-cloudflared.service</span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ~/pr-agent <span class="kw">&amp;&amp;</span> <span class="fu">git</span> pull origin production</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.pod ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.container ~/.config/containers/systemd/</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.timer ~/pr-agent/deploy/quadlet/<span class="pp">*</span>.service ~/.config/systemd/user/</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="kw">(</span><span class="bu">cd</span> ~/pr-agent/deploy <span class="kw">&amp;&amp;</span> <span class="ex">./render-config.sh</span><span class="kw">)</span>   <span class="co"># re-render cloudflared config</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> daemon-reload</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> restart pr-agent.service pr-agent-cloudflared.service</span></code></pre></div>
 <p><strong>4c — Full box rebuild</strong> (VM dead or beyond repair):
 there is no volume to reattach and nothing to restore. Just create a
 fresh CX22 from cloud-init per <strong>Section 3 of
@@ -416,32 +430,33 @@ changed (it does not — the tunnel keeps
 <code>pr-agent.tjw.dev</code>).</p>
 <hr />
 <h2 id="quick-reference-commands">Quick-reference commands</h2>
-<div class="sourceCode" id="cb18"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Container + pod status</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> status pr-agent.service pr-agent-cloudflared.service</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> ps <span class="at">-a</span> <span class="at">--pod</span></span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Live logs</span></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="ex">journalctl</span> <span class="at">--user</span> <span class="at">-u</span> <span class="st">&#39;pr-agent*&#39;</span> <span class="at">-f</span></span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Roll back to last-known-good</span></span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> ~/pr-agent/deploy/deploy.sh <span class="at">--rollback</span></span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Redeploy latest good tag (smoke-tested)</span></span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> ~/pr-agent/deploy/deploy.sh</span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Re-fetch secrets from the Cloudflare broker (CF_SERVICE_TOKEN_* in env)</span></span>
-<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a><span class="ex">~/pr-agent/deploy/fetch-secrets.sh</span></span>
-<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Manual secret bootstrap (broker down) — PEM read from file</span></span>
-<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a><span class="ex">~/pr-agent/deploy/bootstrap-secrets.sh</span> /path/to/github-app-private-key.pem</span>
-<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Webhook server answering? (any HTTP code = up)</span></span>
-<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="at">-o</span> /dev/null <span class="at">-w</span> <span class="st">&#39;%{http_code}\n&#39;</span> http://localhost:3000/</span>
-<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a><span class="co"># Deploy-state ledger (the only persisted state)</span></span>
-<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> /var/lib/pr-agent/deploy-state</span>
-<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a><span class="co"># List podman secrets</span></span>
-<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> secret ls</span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Container + pod status</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ex">systemctl</span> <span class="at">--user</span> status pr-agent.service pr-agent-cloudflared.service</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> ps <span class="at">-a</span> <span class="at">--pod</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Live logs</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="ex">journalctl</span> <span class="at">--user</span> <span class="at">-u</span> <span class="st">&#39;pr-agent*&#39;</span> <span class="at">-f</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Roll back to last-known-good</span></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> ~/pr-agent/deploy/deploy.sh <span class="at">--rollback</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Redeploy latest good tag (smoke-tested)</span></span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> ~/pr-agent/deploy/deploy.sh</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Re-fetch secrets from the Cloudflare broker (CF_SERVICE_TOKEN_* in env;</span></span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a><span class="co"># mint a fresh single-use OTP into /etc/pr-agent/otp.env first — see above)</span></span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a><span class="ex">~/pr-agent/deploy/fetch-secrets.sh</span></span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Manual secret bootstrap (broker down) — PEM read from file</span></span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a><span class="ex">~/pr-agent/deploy/bootstrap-secrets.sh</span> /path/to/github-app-private-key.pem</span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Webhook server answering? (any HTTP code = up)</span></span>
+<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="at">-o</span> /dev/null <span class="at">-w</span> <span class="st">&#39;%{http_code}\n&#39;</span> http://localhost:3000/</span>
+<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Deploy-state ledger (the only persisted state)</span></span>
+<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> /var/lib/pr-agent/deploy-state</span>
+<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a><span class="co"># List podman secrets</span></span>
+<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a><span class="ex">podman</span> secret ls</span></code></pre></div>
 </body>
 </html>

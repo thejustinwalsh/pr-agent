@@ -147,6 +147,15 @@ The broker source lives in this repo at `secrets-broker/`. `secrets.tjw.dev` is 
 
 > All five `pr-agent-*` secrets from Part 3 must exist in the store before deploy, or `wrangler deploy` fails resolving the bindings.
 
+**Step 12a — Create the OTP KV namespace.** The broker enforces a single-use OTP per fetch (see `recovery.html` and the deployment spec), stored in Workers KV.
+
+```bash
+cd secrets-broker
+npx wrangler kv namespace create OTP_KV   # prints an id
+```
+
+Put the id into `wrangler.toml` (`[[kv_namespaces]]` `OTP_KV`, replacing `REPLACE_WITH_OTP_KV_ID`) and into `deploy/cloud-init.vars` as `OTP_KV_ID`. Scope the wrangler API token used for **minting** to KV write on this namespace only (least privilege) — the Worker itself only reads and deletes. `workers_dev = false` in `wrangler.toml` keeps the broker reachable solely via the Access-gated `secrets.tjw.dev` (no `*.workers.dev` bypass route).
+
 **Step 13.** Deploy (wrangler v4):
 
 ```bash
@@ -166,12 +175,16 @@ curl -si https://secrets.tjw.dev/secrets/pr-agent | head -5
 
 ## Part 5 — Verify a full fetch with the service token
 
-**Step 15.** Fetch this project's namespace using your service-token credentials:
+**Step 15.** Fetch this project's namespace. The broker requires a single-use OTP in addition to the service token — `gen-cloud-init.sh` mints one automatically at provision time; to test by hand, mint one and pass it (a second call with the same OTP returns 410, proving consume-once):
 
 ```bash
+OTP="$(openssl rand -hex 32)"
+HASH="$(printf %s "$OTP" | openssl dgst -sha256 -hex | sed 's/^.*= *//')"
+npx wrangler kv key put --namespace-id="$OTP_KV_ID" "$HASH" pr-agent --ttl 3600
 curl -fsS https://secrets.tjw.dev/secrets/pr-agent \
   -H "CF-Access-Client-Id: $CF_SERVICE_TOKEN_ID" \
   -H "CF-Access-Client-Secret: $CF_SERVICE_TOKEN_SECRET" \
+  -H "X-Secrets-OTP: $OTP" \
   | jq 'keys'
 ```
 
@@ -187,7 +200,7 @@ You should see all five keys:
 ]
 ```
 
-All five present and non-empty confirms the bindings are wired. The broker serves only `/secrets/<namespace>` for a registered namespace, and only when Cloudflare Access has injected the `Cf-Access-Jwt-Assertion` header — a defense-in-depth check the Worker enforces in `src/index.ts`. A request to a different or unknown namespace returns 404 and never leaks another project's keys.
+All five present and non-empty confirms the bindings are wired. The broker serves only `/secrets/<namespace>` for a registered namespace, only when Cloudflare Access has injected the `Cf-Access-Jwt-Assertion` header, and only for a valid unused OTP — which it burns on use. Any OTP failure (missing, malformed, expired, replayed, wrong namespace) returns a uniform 410; a different or unknown namespace returns 404 and never leaks another project's keys.
 
 ---
 

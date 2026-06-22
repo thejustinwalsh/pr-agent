@@ -122,7 +122,18 @@ pr-agent-webhook-secret
 pr-agent-tunnel-cred
 ```
 
-**Re-run `fetch-secrets.sh`** (the service-token env lives in the root-owned file):
+**Mint a fresh OTP first.** The boot OTP is single-use and was burned (and `/etc/pr-agent/otp.env` deleted) at first boot, so re-running `fetch-secrets.sh` alone returns 410. Mint a new one (from a machine with `wrangler` auth) and write it to `otp.env` on the box:
+
+```bash
+OTP="$(openssl rand -hex 32)"
+HASH="$(printf %s "$OTP" | openssl dgst -sha256 -hex | sed 's/^.*= *//')"
+npx wrangler kv key put --namespace-id="$OTP_KV_ID" "$HASH" pr-agent --ttl 3600
+# on the box:
+printf 'SECRETS_OTP=%s\n' "$OTP" | sudo tee /etc/pr-agent/otp.env >/dev/null
+sudo chown pragent:pragent /etc/pr-agent/otp.env && sudo chmod 600 /etc/pr-agent/otp.env
+```
+
+**Re-run `fetch-secrets.sh`** (the service-token env lives in the root-owned file; `fetch-secrets.sh` sources `otp.env` itself and deletes it on success):
 
 ```bash
 sudo bash -c '. /etc/pr-agent/cf-service-token.env; su - pragent -c "
@@ -135,7 +146,7 @@ sudo bash -c '. /etc/pr-agent/cf-service-token.env; su - pragent -c "
 
 You should see `[fetch-secrets] podman secrets created`. The multi-line GitHub App PEM rides through as a JSON string and is decoded back to real newlines by `jq -er` before `podman secret create` stores it — no re-encoding, so the key arrives in the container intact.
 
-**Broker unreachable?** Fall back to manual bootstrap — it reads the multi-line PEM straight from the downloaded file (it cannot be typed at a prompt) and prompts for the rest, none echoed:
+**Broker unreachable?** Fall back to manual bootstrap — it bypasses the broker entirely, so it needs **no OTP**. It reads the multi-line PEM straight from the downloaded file (it cannot be typed at a prompt) and prompts for the rest, none echoed:
 
 ```bash
 ~/pr-agent/deploy/bootstrap-secrets.sh /path/to/pr-agent.<date>.private-key.pem
@@ -195,7 +206,8 @@ bash ~/pr-agent/deploy/deploy.sh --rollback
 # Redeploy latest good tag (smoke-tested)
 bash ~/pr-agent/deploy/deploy.sh
 
-# Re-fetch secrets from the Cloudflare broker (CF_SERVICE_TOKEN_* in env)
+# Re-fetch secrets from the Cloudflare broker (CF_SERVICE_TOKEN_* in env;
+# mint a fresh single-use OTP into /etc/pr-agent/otp.env first — see above)
 ~/pr-agent/deploy/fetch-secrets.sh
 
 # Manual secret bootstrap (broker down) — PEM read from file
