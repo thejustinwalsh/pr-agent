@@ -26,23 +26,33 @@ case "$*" in
 esac
 EOF
 
-  # mock podman: log every call; succeed for everything.
+  # mock podman: log every call; for the liveness probe (`ps ... status=running`)
+  # report the pr-agent container as Up. Succeed for everything else.
   cat > "$BIN/podman" <<'EOF'
 #!/usr/bin/env bash
 echo "podman $*" >> "$TMP_LOG"
+case "$*" in
+  *ps*running*) echo "pr-agent" ;;
+esac
 exit 0
 EOF
 
-  # mock systemctl: log calls (the user manager isn't present under bats).
+  # mock systemctl: log calls; `is-active` reports $MOCK_IS_ACTIVE (default active),
+  # letting a test simulate a service that fails to come up after a swap.
   cat > "$BIN/systemctl" <<'EOF'
 #!/usr/bin/env bash
 echo "systemctl $*" >> "$TMP_LOG"
+case "$*" in
+  *is-active*) echo "${MOCK_IS_ACTIVE:-active}" ;;
+esac
 exit 0
 EOF
 
   chmod +x "$BIN/curl" "$BIN/jq" "$BIN/podman" "$BIN/systemctl"
   export PATH="$BIN:$PATH" TMP_LOG="$TMP/calls.log"
   export DEPLOY_STATE_DIR="$TMP/state" DEPLOY_SMOKE_OVERRIDE=pass
+  # keep the post-swap health gate fast under test
+  export DEPLOY_VERIFY_RETRIES=1 DEPLOY_VERIFY_SLEEP=0
 }
 teardown() { rm -rf "$TMP"; }
 
@@ -52,8 +62,31 @@ teardown() { rm -rf "$TMP"; }
   # newest of v0.36.1 / v0.37.0 is v0.37.0
   grep -q "podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0" "$TMP/calls.log"
   grep -q "podman tag ghcr.io/thejustinwalsh/pr-agent:v0.37.0 localhost/pr-agent:current" "$TMP/calls.log"
-  grep -q "systemctl --user restart pr-agent.service pr-agent-cloudflared.service" "$TMP/calls.log"
+  grep -q "systemctl --user restart pragent-pod.service" "$TMP/calls.log"
+  grep -q "systemctl --user start pr-agent.service pr-agent-cloudflared.service" "$TMP/calls.log"
   grep -q "^CURRENT=v0.37.0" "$TMP/state/deploy-state"
+}
+
+@test "swap_to brings the pod up BEFORE starting the containers (pod-aware restart)" {
+  run bash "$BATS_TEST_DIRNAME/../deploy.sh"
+  [ "$status" -eq 0 ]
+  # The container units BindsTo pragent-pod.service (which does not auto-start the
+  # pod), so the pod must be (re)started before the container services or the start
+  # fails its dependency. Assert that ordering in the call log.
+  pod_line="$(grep -n 'systemctl --user restart pragent-pod.service' "$TMP/calls.log" | head -1 | cut -d: -f1)"
+  start_line="$(grep -n 'systemctl --user start pr-agent.service pr-agent-cloudflared.service' "$TMP/calls.log" | head -1 | cut -d: -f1)"
+  [ -n "$pod_line" ] && [ -n "$start_line" ]
+  [ "$pod_line" -lt "$start_line" ]
+}
+
+@test "post-deploy health failure auto-rolls-back to the current tag and exits non-zero" {
+  printf 'CURRENT=v0.36.1\nPREVIOUS=\n' > "$TMP/state/deploy-state"
+  export MOCK_IS_ACTIVE=inactive   # the swapped service never comes up
+  run bash "$BATS_TEST_DIRNAME/../deploy.sh"
+  [ "$status" -ne 0 ]
+  # swapped to the v0.37.0 candidate, health gate failed, then rolled back to v0.36.1
+  grep -q "podman tag ghcr.io/thejustinwalsh/pr-agent:v0.37.0 localhost/pr-agent:current" "$TMP/calls.log"
+  grep -q "podman tag ghcr.io/thejustinwalsh/pr-agent:v0.36.1 localhost/pr-agent:current" "$TMP/calls.log"
 }
 
 @test "rollback retargets :current to the previous good tag" {

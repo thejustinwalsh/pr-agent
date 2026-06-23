@@ -79,15 +79,35 @@ smoke_test() {
   return $ok
 }
 
-swap_to() { # retarget the floating :current tag + restart the container services
+swap_to() { # retarget the floating :current tag + restart the pod stack
   local tag="$1"
   podman pull "$IMAGE:$tag"
   podman tag "$IMAGE:$tag" "localhost/pr-agent:current"
   systemctl --user daemon-reload 2>/dev/null || true
-  # Restart the CONTAINER services (not the pod): under Quadlet each container is
-  # its own service and pulls in the pod as a dependency. Restarting only the pod
-  # service would leave the containers down. `restart` also starts them on first run.
-  systemctl --user restart pr-agent.service pr-agent-cloudflared.service 2>/dev/null || true
+  # Quadlet binds each container to pragent-pod.service with BindsTo: the container
+  # stops if the pod stops, but starting the container does NOT start the pod. A swap
+  # stops both containers, which stops the pod; restarting only the containers then
+  # fails their pod dependency ("unit isn't active") and leaves the service DOWN. So
+  # stop the containers, (re)start the pod infra, then start the containers — in order.
+  # Fail-loud: no `|| true` on the start path, so a broken swap surfaces to verify_live.
+  systemctl --user stop pr-agent.service pr-agent-cloudflared.service 2>/dev/null || true
+  systemctl --user restart pragent-pod.service
+  systemctl --user start pr-agent.service pr-agent-cloudflared.service
+}
+
+# Confirm the live pod actually came up after a swap: the unit reports active AND the
+# container is running (not crash-looping). Retries because gunicorn takes a moment.
+verify_live() {
+  local retries="${DEPLOY_VERIFY_RETRIES:-15}" nap="${DEPLOY_VERIFY_SLEEP:-2}" _
+  for _ in $(seq 1 "$retries"); do
+    if [ "$(systemctl --user is-active pr-agent.service 2>/dev/null || true)" = "active" ] \
+       && podman ps --filter name=pr-agent --filter status=running --format '{{.Names}}' 2>/dev/null \
+          | grep -qx pr-agent; then
+      return 0
+    fi
+    sleep "$nap"
+  done
+  return 1
 }
 
 record_state() { printf 'CURRENT=%s\nPREVIOUS=%s\n' "$1" "$2" > "$STATE"; }
@@ -113,6 +133,20 @@ main() {
     exit 1
   fi
   swap_to "$new"
+  # A swap that boots in smoke can still fail to come up live (pod/dependency, env,
+  # disk). Gate on real liveness; if it fails, roll back so we never leave prod down.
+  if ! verify_live; then
+    log "POST-DEPLOY HEALTH CHECK FAILED for $new"
+    if [ -n "$cur" ]; then
+      log "rolling back to $cur"
+      swap_to "$cur"
+      verify_live || log "WARNING: rollback to $cur ALSO failed health check — manual intervention required"
+      record_state "$cur" ""
+    else
+      log "WARNING: no previous tag to roll back to — service may be down, manual intervention required"
+    fi
+    exit 1
+  fi
   record_state "$new" "$cur"
   log "deployed $new"
 }
