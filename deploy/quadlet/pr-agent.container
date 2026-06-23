@@ -16,8 +16,8 @@ Environment=GITHUB__DEPLOYMENT_TYPE=app
 # which upstream documents but ships unwired).
 Environment=GITHUB_APP__FEEDBACK_ON_DRAFT_PR=true
 Secret=pr-agent-deepseek-key,type=env,target=OPENAI__KEY
-Secret=pr-agent-github-app-key,type=env,target=GITHUB_APP__PRIVATE_KEY
-Secret=pr-agent-github-app-id,type=env,target=GITHUB_APP__APP_ID
+Secret=pr-agent-github-app-key,type=env,target=GITHUB__PRIVATE_KEY
+Secret=pr-agent-github-app-id,type=env,target=GITHUB__APP_ID
 Secret=pr-agent-webhook-secret,type=env,target=GITHUB__WEBHOOK_SECRET
 
 [Service]

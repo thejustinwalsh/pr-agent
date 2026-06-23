@@ -6,8 +6,8 @@ This produces four secret/identity values. You put them into `deploy/broker-secr
 
 | GitHub App field | `broker-secrets.vars` key | Container env target (dynaconf) |
 |---|---|---|
-| App **ID** (numeric) | `GITHUB_APP_ID` | `GITHUB_APP__APP_ID` |
-| **Private key** (PEM) | `GITHUB_APP_PRIVATE_KEY_FILE` (path to the `.pem`) | `GITHUB_APP__PRIVATE_KEY` |
+| App **ID** (numeric) | `GITHUB_APP_ID` | `GITHUB__APP_ID` |
+| **Private key** (PEM) | `GITHUB_APP_PRIVATE_KEY_FILE` (path to the `.pem`) | `GITHUB__PRIVATE_KEY` |
 | **Webhook secret** (HMAC) | `GITHUB_WEBHOOK_SECRET` | `GITHUB__WEBHOOK_SECRET` |
 | DeepSeek API key | `DEEPSEEK_API_KEY` | `OPENAI__KEY` |
 
@@ -88,13 +88,13 @@ These two cover PR-Agent's core flows. If you intend to use PR-level review comm
 
 ## Part 2 — Capture the identity values
 
-**Step 7 — App ID.** On the App's settings page (right after creation), note the **App ID** (a number, e.g. `1234567`). This becomes the `pr-agent-github-app-id` secret → `GITHUB_APP__APP_ID`.
+**Step 7 — App ID.** On the App's settings page (right after creation), note the **App ID** (a number, e.g. `1234567`). This becomes the `pr-agent-github-app-id` secret → `GITHUB__APP_ID`.
 
 **Step 8 — Private key.** Scroll to **Private keys** and click **Generate a private key**. GitHub downloads a `.pem` file (RSA, multi-line, `-----BEGIN RSA PRIVATE KEY-----` … `-----END RSA PRIVATE KEY-----`). This file is shown for download **once** — if you lose it, you generate a new one and delete the old.
 
-This PEM becomes the `pr-agent-github-app-key` secret → `GITHUB_APP__PRIVATE_KEY`. It is **multi-line**, which matters for how it is stored and injected:
+This PEM becomes the `pr-agent-github-app-key` secret → `GITHUB__PRIVATE_KEY`. It is **multi-line**, which matters for how it is stored and injected:
 
-- The PEM is stored as a **Worker secret** on the broker (not the Secrets Store — a base64 RSA-2048 key is ~2.2 KB, over the Store's 1024-char cap). You do not run `wrangler` by hand: just point `deploy/broker-secrets.vars` at the downloaded file — `GITHUB_APP_PRIVATE_KEY_FILE=~/Downloads/pr-agent.<date>.private-key.pem` — and `deploy/set-broker-secrets.sh` (cloudflare runbook Step 14) base64-encodes it and sets it for you. `fetch-secrets.sh` on the box decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB_APP__PRIVATE_KEY`, so the container sees the intact key.
+- The PEM is stored as a **Worker secret** on the broker (not the Secrets Store — a base64 RSA-2048 key is ~2.2 KB, over the Store's 1024-char cap). You do not run `wrangler` by hand: just point `deploy/broker-secrets.vars` at the downloaded file — `GITHUB_APP_PRIVATE_KEY_FILE=~/Downloads/pr-agent.<date>.private-key.pem` — and `deploy/set-broker-secrets.sh` (cloudflare runbook Step 14) base64-encodes it and sets it for you. `fetch-secrets.sh` on the box decodes it (`openssl base64 -d -A`) back to the real multi-line PEM before `podman secret create`, and the quadlet maps it `type=env,target=GITHUB__PRIVATE_KEY`, so the container sees the intact key.
 - If you are bootstrapping by hand (broker unreachable), do **not** base64-encode and do **not** paste at a prompt. Pass the downloaded file to `deploy/bootstrap-secrets.sh /path/to/pr-agent.<date>.private-key.pem`; it feeds the raw `.pem` straight into `podman secret create` so newlines survive.
 
 > **Never commit the PEM.** It is the App's identity; anyone holding it can act as PR-Agent against every repo the App is installed on. Point `broker-secrets.vars` at the file (which stays out of git), set it as a Worker secret, and keep the `.pem` in your password manager only.
@@ -127,8 +127,8 @@ After this runbook you hold three GitHub-issued values plus your DeepSeek key. P
 
 | You have | `broker-secrets.vars` key | Becomes env |
 |---|---|---|
-| App ID (number) | `GITHUB_APP_ID` | `GITHUB_APP__APP_ID` |
-| Private key (.pem) | `GITHUB_APP_PRIVATE_KEY_FILE` (path) | `GITHUB_APP__PRIVATE_KEY` |
+| App ID (number) | `GITHUB_APP_ID` | `GITHUB__APP_ID` |
+| Private key (.pem) | `GITHUB_APP_PRIVATE_KEY_FILE` (path) | `GITHUB__PRIVATE_KEY` |
 | Webhook secret (hex) | `GITHUB_WEBHOOK_SECRET` | `GITHUB__WEBHOOK_SECRET` |
 | DeepSeek API key | `DEEPSEEK_API_KEY` | `OPENAI__KEY` |
 

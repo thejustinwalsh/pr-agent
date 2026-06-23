@@ -288,13 +288,13 @@ fetches them and the quadlet maps each to a container env target:</p>
 <tr>
 <td>App <strong>ID</strong> (numeric)</td>
 <td><code>GITHUB_APP_ID</code></td>
-<td><code>GITHUB_APP__APP_ID</code></td>
+<td><code>GITHUB__APP_ID</code></td>
 </tr>
 <tr>
 <td><strong>Private key</strong> (PEM)</td>
 <td><code>GITHUB_APP_PRIVATE_KEY_FILE</code> (path to the
 <code>.pem</code>)</td>
-<td><code>GITHUB_APP__PRIVATE_KEY</code></td>
+<td><code>GITHUB__PRIVATE_KEY</code></td>
 </tr>
 <tr>
 <td><strong>Webhook secret</strong> (HMAC)</td>
@@ -420,7 +420,7 @@ identity values</h2>
 after creation), note the <strong>App ID</strong> (a number,
 e.g. <code>1234567</code>). This becomes the
 <code>pr-agent-github-app-id</code> secret →
-<code>GITHUB_APP__APP_ID</code>.</p>
+<code>GITHUB__APP_ID</code>.</p>
 <p><strong>Step 8 — Private key.</strong> Scroll to <strong>Private
 keys</strong> and click <strong>Generate a private key</strong>. GitHub
 downloads a <code>.pem</code> file (RSA, multi-line,
@@ -429,7 +429,7 @@ downloads a <code>.pem</code> file (RSA, multi-line,
 download <strong>once</strong> — if you lose it, you generate a new one
 and delete the old.</p>
 <p>This PEM becomes the <code>pr-agent-github-app-key</code> secret →
-<code>GITHUB_APP__PRIVATE_KEY</code>. It is <strong>multi-line</strong>,
+<code>GITHUB__PRIVATE_KEY</code>. It is <strong>multi-line</strong>,
 which matters for how it is stored and injected:</p>
 <ul>
 <li>The PEM is stored as a <strong>Worker secret</strong> on the broker
@@ -442,8 +442,8 @@ file —
 14) base64-encodes it and sets it for you. <code>fetch-secrets.sh</code>
 on the box decodes it (<code>openssl base64 -d -A</code>) back to the
 real multi-line PEM before <code>podman secret create</code>, and the
-quadlet maps it <code>type=env,target=GITHUB_APP__PRIVATE_KEY</code>, so
-the container sees the intact key.</li>
+quadlet maps it <code>type=env,target=GITHUB__PRIVATE_KEY</code>, so the
+container sees the intact key.</li>
 <li>If you are bootstrapping by hand (broker unreachable), do
 <strong>not</strong> base64-encode and do <strong>not</strong> paste at
 a prompt. Pass the downloaded file to
@@ -523,12 +523,12 @@ quadlet (<code>deploy/quadlet/pr-agent.container</code>) and
 <tr>
 <td>App ID (number)</td>
 <td><code>GITHUB_APP_ID</code></td>
-<td><code>GITHUB_APP__APP_ID</code></td>
+<td><code>GITHUB__APP_ID</code></td>
 </tr>
 <tr>
 <td>Private key (.pem)</td>
 <td><code>GITHUB_APP_PRIVATE_KEY_FILE</code> (path)</td>
-<td><code>GITHUB_APP__PRIVATE_KEY</code></td>
+<td><code>GITHUB__PRIVATE_KEY</code></td>
 </tr>
 <tr>
 <td>Webhook secret (hex)</td>

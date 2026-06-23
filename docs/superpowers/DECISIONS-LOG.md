@@ -101,3 +101,10 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Evidence:** model-config.bats 12/12 (codemod applies to a copy, patches the gate, idempotent, fails loud on draft-gate drift); workflows.bats 5/5; shellcheck + actionlint clean; patched github_app.py parses as valid Python; tests never mutate the committed tree.
 - **Note:** the premature `v0.37.0` tag/image (built from 0.36.1) must be cleared so the real v0.37.0 build deploys (box compares tag strings).
 - **Affected:** `.github/workflows/sync.yml`, `patches/apply.sh`, `deploy/quadlet/pr-agent.container`, `deploy/tests/{model-config,workflows}.bats`.
+
+## 2026-06-22 — BUGFIX: App creds in the [github] section, not [github_app]
+- **Symptom:** /review on a PR → webhook 200, but no review; no loguru error. Async background task threw a plain traceback (not loguru JSON), so it was invisible to log scans.
+- **Root cause:** `github_provider._get_github_client()` reads `get_settings().github.private_key` and `.github.app_id` (the `[github]` section, per `.secrets_template.toml`). Our quadlet mapped the secrets to `GITHUB_APP__PRIVATE_KEY` / `GITHUB_APP__APP_ID` (the `[github_app]` section) → `BoxKeyError: 'DynaBox' object has no attribute 'private_key'` → wrapped as `ValueError: Failed to get git provider`. Webhook HMAC (200) uses `github.webhook_secret` (correctly mapped), so receipt worked but every *action* failed.
+- **Fix:** quadlet targets `GITHUB__PRIVATE_KEY` / `GITHUB__APP_ID`. (`GITHUB__WEBHOOK_SECRET`, `GITHUB__DEPLOYMENT_TYPE` were already correct; `GITHUB_APP__FEEDBACK_ON_DRAFT_PR` is correctly `[github_app]`.) The App private key itself was fine (base64 round-trip verified: JWT auth → installations OK); only the settings *section* was wrong.
+- **Test gap that hid it:** quadlet.bats asserted the *wrong* targets, so it passed. Corrected the assertion + added a negative guard against `GITHUB_APP__{PRIVATE_KEY,APP_ID}`.
+- **Affected:** `deploy/quadlet/pr-agent.container`, `deploy/tests/quadlet.bats`, `docs/runbooks/github-app.{md,html}`.

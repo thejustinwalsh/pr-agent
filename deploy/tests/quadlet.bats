@@ -26,9 +26,16 @@ Q="${BATS_TEST_DIRNAME}/../quadlet"
 }
 @test "pr-agent container maps every podman secret to its env target" {
   grep -q "Secret=pr-agent-deepseek-key,type=env,target=OPENAI__KEY" "$Q/pr-agent.container"
-  grep -q "Secret=pr-agent-github-app-key,type=env,target=GITHUB_APP__PRIVATE_KEY" "$Q/pr-agent.container"
-  grep -q "Secret=pr-agent-github-app-id,type=env,target=GITHUB_APP__APP_ID" "$Q/pr-agent.container"
+  # App creds live in the [github] section (github.private_key / github.app_id), NOT
+  # [github_app] — github_provider._get_github_client reads get_settings().github
+  # .private_key / .app_id. Mapping these to GITHUB_APP__* silently breaks every PR
+  # action (webhook 200, but cannot authenticate to act).
+  grep -q "Secret=pr-agent-github-app-key,type=env,target=GITHUB__PRIVATE_KEY" "$Q/pr-agent.container"
+  grep -q "Secret=pr-agent-github-app-id,type=env,target=GITHUB__APP_ID" "$Q/pr-agent.container"
   grep -q "Secret=pr-agent-webhook-secret,type=env,target=GITHUB__WEBHOOK_SECRET" "$Q/pr-agent.container"
+  # Negative guard: the wrong section must never come back.
+  ! grep -q "target=GITHUB_APP__PRIVATE_KEY" "$Q/pr-agent.container"
+  ! grep -q "target=GITHUB_APP__APP_ID" "$Q/pr-agent.container"
 }
 @test "cloudflared mounts the rendered config and tunnel cred, runs the tunnel" {
   C="$Q/pr-agent-cloudflared.container"
