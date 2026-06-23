@@ -144,6 +144,18 @@ teardown() { rm -rf "$TMP"; }
   [ "$fetch_line" -lt "$pull_line" ]
 }
 
+@test "self-refresh re-enables the timer units so [Install] changes take effect" {
+  unset DEPLOY_REFRESHED
+  run bash "$BATS_TEST_DIRNAME/../deploy.sh"
+  [ "$status" -eq 0 ]
+  grep -q "systemctl --user enable pr-agent-deploy.timer" "$TMP/calls.log"
+  grep -q "systemctl --user enable pr-agent-prune.timer" "$TMP/calls.log"
+  # enable must follow the daemon-reload that picks up the synced unit files
+  reload_line="$(grep -n 'systemctl --user daemon-reload' "$TMP/calls.log" | head -1 | cut -d: -f1)"
+  enable_line="$(grep -n 'systemctl --user enable pr-agent-deploy.timer' "$TMP/calls.log" | head -1 | cut -d: -f1)"
+  [ "$reload_line" -lt "$enable_line" ]
+}
+
 @test "self-refresh failure does not block the deploy" {
   unset DEPLOY_REFRESHED
   # make git fail so fetch/reset error out

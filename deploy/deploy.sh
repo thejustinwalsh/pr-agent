@@ -138,6 +138,13 @@ self_refresh() {
     cp "$REPO_ROOT"/deploy/quadlet/*.pod "$REPO_ROOT"/deploy/quadlet/*.container "$cdir"/ 2>/dev/null || true
     cp "$REPO_ROOT"/deploy/quadlet/*.timer "$REPO_ROOT"/deploy/quadlet/*.service "$udir"/ 2>/dev/null || true
     systemctl --user daemon-reload 2>/dev/null || true
+    # daemon-reload regenerates the quadlet (.container/.pod) services and honors
+    # their [Install], but static timers need an explicit enable for a changed or
+    # newly-added [Install] to take effect. Re-enable every synced timer (idempotent).
+    for t in "$REPO_ROOT"/deploy/quadlet/*.timer; do
+      [ -e "$t" ] || continue
+      systemctl --user enable "$(basename "$t")" 2>/dev/null || true
+    done
   else
     log "WARNING: refresh failed; proceeding with the on-box scripts"
   fi
