@@ -35,7 +35,9 @@ R="${BATS_TEST_DIRNAME}/../../docs/runbooks"
   grep -qi "webhook secret" "$R/github-app.html"
   grep -qi "private key" "$R/github-app.html"
   grep -qi "GITHUB__WEBHOOK_SECRET" "$R/github-app.html"
-  grep -qi "GITHUB_APP__PRIVATE_KEY" "$R/github-app.html"
+  # App creds live in the [github] section, not [github_app] (see DECISIONS-LOG
+  # 2026-06-22 bugfix); the runbook + quadlet use GITHUB__PRIVATE_KEY.
+  grep -qi "GITHUB__PRIVATE_KEY" "$R/github-app.html"
 }
 
 @test "github-app runbook uses the real confirmed webhook route" {
