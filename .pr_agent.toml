@@ -1,27 +1,28 @@
-# NOTE: This file is consumed by Qodo's "free for open source" agent
-# (the `qodo-free-for-open-source-projects` bot) — a separate, hosted, closed-source
-# service. It is NOT read by the open-source pr-agent in this repository; some keys
-# below (e.g. the [review_agent] section) only exist in that hosted agent.
+# .pr_agent.toml — this repo's OVERRIDE layer for the self-hosted PR-Agent + DeepSeek v4-pro.
+#
+# The good defaults — the generic reviewer/suggestion methodology and all tuning knobs
+# (reasoning_effort=high, max_model_tokens=1M, num_max_findings=6, suggestions_score_threshold=5,
+# wider patch context, thinking-mode) — are baked into the deployment image by patches/apply.sh.
+# They apply to EVERY repo this bot reviews, so a repo never restates them.
+#
+# This file therefore contains only what is specific to THIS repository: extra_instructions
+# that the prompt template APPENDS on top of the baked methodology. That is the only knob a
+# repo should normally need. (Process env stays the highest layer; this file overrides the
+# baked configuration.toml defaults for anything you do set here.)
 
 [pr_reviewer]
-enable_review_labels_effort = true
-enable_auto_approval = true
+extra_instructions = '''
+This repository is infrastructure-as-code for a self-hosted PR-Agent deployment running DeepSeek v4-pro: bash and cloud-init, Dockerfiles, Quadlet and systemd units, GitHub Actions workflows, TOML and YAML config, a secrets-broker, and an asserting Python codemod (patches/apply.sh) over upstream PR-Agent. Follow the project working agreement in CLAUDE.md. On top of the standard review categories, flag every instance of these repository-specific footguns:
+- Shell and cloud-init runcmd: a script missing `set -euo pipefail`; an unquoted "$var" that can word-split or glob; `ufw` used with `--force` on `allow` or `default` (here --force belongs only on `enable` or `reset`); a `users:` block missing `- default`; sshd hardening done by editing the main sshd_config instead of a sshd_config.d/*.conf drop-in; a missing `openssh-server` install; a script referenced by runcmd that is not committed with the executable bit; `rm -rf` on an unbounded or derived path; piping curl into a shell without a checksum or pin.
+- Dockerfile: an unpinned base image (no digest or version); a missing non-root USER; a secret baked into a layer or ARG; ADD where COPY suffices.
+- Quadlet .container or systemd unit: a missing ContainerName= (deploy.sh restarts the named container, so its absence breaks the rolling restart); deploy.sh restarting the pod instead of the container services; a missing Restart= or health check.
+- GitHub Actions: interpolation of untrusted PR input into a `run:` shell (script injection); pull_request_target combined with a checkout of PR head and secret exposure; an unpinned third-party action (pin to a SHA); a missing least-privilege `permissions:` block.
+- TOML or YAML config: a config key absent from the vendored upstream configuration.toml (silent key drift); a secret committed in plaintext; a litellm model string missing the `openai/` provider prefix (which breaks DeepSeek routing); GitHub App credentials mapped to the wrong settings section.
+- patches/apply.sh codemod: a patch that is not asserting (it must fail loudly on upstream drift, never silently no-op); a bare except; a missing await on an async call.
+- secrets-broker: any path that writes a secret world-readable, logs it, or returns it in an HTTP response or error body.
+'''
 
-[github_app]
-pr_commands = [
-    "/describe --pr_description.publish_description_as_comment=true",
-    "/improve",
-    "/agentic_review"
-]
-
-handle_push_trigger = true
-push_commands = [
-    "/improve",
-    "/agentic_review"
-]
-
-[review_agent]
-enabled = true
-publish_output = true
-demand_self_review = true
-approve_pr_on_self_review = true
+[pr_code_suggestions]
+extra_instructions = '''
+This is an infrastructure-as-code repository (bash, cloud-init, Dockerfiles, Quadlet and systemd, GitHub Actions, TOML and YAML, a secrets-broker, and a Python codemod over upstream PR-Agent). Follow CLAUDE.md. Favor suggestions that add `set -euo pipefail` to a script that lacks it, quote an unquoted shell variable, pin an unpinned Docker base image or Action to a digest or SHA, add a missing ContainerName= to a Quadlet unit, add the `openai/` prefix to a litellm model string, or add a missing test (bats or pytest, no sleeps or hardcoded timeouts) for a catastrophic edge already in scope. This repository is fail-loud: never suggest swallowing an error with try/except or `|| true`. Ignore vendored upstream PR-Agent source you are not patching, and *.md and *.txt files.
+'''
