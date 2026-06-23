@@ -9,6 +9,7 @@ REPO="${BATS_TEST_DIRNAME}/../.."
 CONF="${REPO}/pr_agent/settings/configuration.toml"
 PROC="${REPO}/pr_agent/algo/pr_processing.py"
 LITE="${REPO}/pr_agent/algo/ai_handlers/litellm_ai_handler.py"
+ALGO_INIT="${REPO}/pr_agent/algo/__init__.py"
 LOADER="${REPO}/pr_agent/config_loader.py"
 APPLY="${REPO}/patches/apply.sh"
 
@@ -16,9 +17,12 @@ APPLY="${REPO}/patches/apply.sh"
 # never mutate the committed source tree (the patch is build-time only).
 _mkroot() {
   local r; r="$(mktemp -d)"
-  mkdir -p "$r/pr_agent/servers" "$r/pr_agent/settings" "$r/pr_agent/algo/ai_handlers"
+  mkdir -p "$r/pr_agent/servers" "$r/pr_agent/settings/code_suggestions" "$r/pr_agent/algo/ai_handlers"
   cp "$PROC"   "$r/pr_agent/algo/pr_processing.py"
   cp "$LITE"   "$r/pr_agent/algo/ai_handlers/litellm_ai_handler.py"
+  cp "$ALGO_INIT" "$r/pr_agent/algo/__init__.py"  # codemod registers the DeepSeek model here
+  cp "${REPO}/pr_agent/settings/pr_reviewer_prompts.toml" "$r/pr_agent/settings/pr_reviewer_prompts.toml"  # codemod bakes the reviewer methodology here
+  cp "${REPO}/pr_agent/settings/code_suggestions/pr_code_suggestions_prompts.toml" "$r/pr_agent/settings/code_suggestions/pr_code_suggestions_prompts.toml"
   cp "$LOADER" "$r/pr_agent/config_loader.py"
   cp "$REPO/pr_agent/servers/github_app.py" "$r/pr_agent/servers/github_app.py"
   cp "$CONF"   "$r/pr_agent/settings/configuration.toml"
