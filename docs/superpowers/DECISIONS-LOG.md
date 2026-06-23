@@ -108,3 +108,9 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Fix:** quadlet targets `GITHUB__PRIVATE_KEY` / `GITHUB__APP_ID`. (`GITHUB__WEBHOOK_SECRET`, `GITHUB__DEPLOYMENT_TYPE` were already correct; `GITHUB_APP__FEEDBACK_ON_DRAFT_PR` is correctly `[github_app]`.) The App private key itself was fine (base64 round-trip verified: JWT auth → installations OK); only the settings *section* was wrong.
 - **Test gap that hid it:** quadlet.bats asserted the *wrong* targets, so it passed. Corrected the assertion + added a negative guard against `GITHUB_APP__{PRIVATE_KEY,APP_ID}`.
 - **Affected:** `deploy/quadlet/pr-agent.container`, `deploy/tests/quadlet.bats`, `docs/runbooks/github-app.{md,html}`.
+
+## 2026-06-22 — BUGFIX: model needs openai/ provider prefix for litellm
+- **Symptom:** /review posts "Preparing review..." then never fills in — `litellm.BadRequestError: LLM Provider NOT provided ... model=deepseek-v4-pro`.
+- **Cause:** DeepSeek is OpenAI-compatible via OPENAI__API_BASE, but litellm can't infer the provider for the unknown model name `deepseek-v4-pro`. It needs the `openai/` prefix to route to api_base. Also `CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]` was passed to litellm verbatim as `[deepseek-v4-flash]` — dynaconf's env loader does not parse a bracketed value into a list.
+- **Fix:** `CONFIG__MODEL=openai/deepseek-v4-pro`, `CONFIG__FALLBACK_MODELS=openai/deepseek-v4-flash` (plain string → PR-Agent wraps to a 1-element list). Verified in-container: `litellm.completion(model="openai/deepseek-v4-pro", api_base, api_key)` returns real content.
+- **Affected:** `deploy/quadlet/pr-agent.container`, `deploy/tests/quadlet.bats`.

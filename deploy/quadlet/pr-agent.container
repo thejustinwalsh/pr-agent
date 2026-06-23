@@ -7,10 +7,14 @@ ContainerName=pr-agent
 Image=localhost/pr-agent:current
 Pod=pragent.pod
 Environment=OPENAI__API_BASE=https://api.deepseek.com
-Environment=CONFIG__MODEL=deepseek-v4-pro
+# DeepSeek is OpenAI-compatible; litellm needs the openai/ provider prefix to route
+# an unknown model name to the OPENAI__API_BASE endpoint (without it: "LLM Provider
+# NOT provided"). Plain string for the fallback — a bracketed value is NOT parsed as
+# a list by dynaconf's env loader and gets passed to litellm verbatim.
+Environment=CONFIG__MODEL=openai/deepseek-v4-pro
 # deepseek-v4-pro: 1M context window (output ceiling 384K is handled by PR-Agent's output-budget settings).
 Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=1000000
-Environment=CONFIG__FALLBACK_MODELS=["deepseek-v4-flash"]
+Environment=CONFIG__FALLBACK_MODELS=openai/deepseek-v4-flash
 Environment=GITHUB__DEPLOYMENT_TYPE=app
 # Auto-run review tools on draft PRs too (patches/apply.sh implements this setting,
 # which upstream documents but ships unwired).

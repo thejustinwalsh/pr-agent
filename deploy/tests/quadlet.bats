@@ -20,7 +20,12 @@ Q="${BATS_TEST_DIRNAME}/../quadlet"
 }
 @test "pr-agent container sets the static DeepSeek/GitHub-App env" {
   grep -q "Environment=OPENAI__API_BASE=https://api.deepseek.com" "$Q/pr-agent.container"
-  grep -q "Environment=CONFIG__MODEL=deepseek-v4-pro" "$Q/pr-agent.container"
+  # litellm needs the openai/ provider prefix to route the custom model to api_base;
+  # without it: "LLM Provider NOT provided". Fallback is a plain string (a bracketed
+  # value is not parsed as a list by dynaconf's env loader).
+  grep -q "Environment=CONFIG__MODEL=openai/deepseek-v4-pro" "$Q/pr-agent.container"
+  grep -q "Environment=CONFIG__FALLBACK_MODELS=openai/deepseek-v4-flash" "$Q/pr-agent.container"
+  ! grep -qE "Environment=CONFIG__MODEL=deepseek-v4-pro$" "$Q/pr-agent.container"   # unprefixed must not return
   grep -q "Environment=CONFIG__CUSTOM_MODEL_MAX_TOKENS=" "$Q/pr-agent.container"
   grep -q "Environment=GITHUB__DEPLOYMENT_TYPE=app" "$Q/pr-agent.container"
 }
