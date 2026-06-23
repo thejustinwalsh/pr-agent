@@ -48,11 +48,26 @@ esac
 exit 0
 EOF
 
-  chmod +x "$BIN/curl" "$BIN/jq" "$BIN/podman" "$BIN/systemctl"
+  # mock git: log calls; the self-refresh fetch/reset must not touch the real repo.
+  cat > "$BIN/git" <<'EOF'
+#!/usr/bin/env bash
+echo "git $*" >> "$TMP_LOG"
+case "$*" in
+  *rev-parse*) echo "deadbee" ;;
+esac
+exit 0
+EOF
+
+  chmod +x "$BIN/curl" "$BIN/jq" "$BIN/podman" "$BIN/systemctl" "$BIN/git"
   export PATH="$BIN:$PATH" TMP_LOG="$TMP/calls.log"
   export DEPLOY_STATE_DIR="$TMP/state" DEPLOY_SMOKE_OVERRIDE=pass
   # keep the post-swap health gate fast under test
   export DEPLOY_VERIFY_RETRIES=1 DEPLOY_VERIFY_SLEEP=0
+  # isolate the unit-sync writes to a temp HOME (self-refresh copies units there)
+  export HOME="$TMP/home"; mkdir -p "$HOME"
+  # by default skip the self-refresh+re-exec so each test exercises the deploy logic
+  # directly; the dedicated refresh test unsets this.
+  export DEPLOY_REFRESHED=1
 }
 teardown() { rm -rf "$TMP"; }
 
@@ -110,4 +125,36 @@ teardown() { rm -rf "$TMP"; }
   [ "$status" -ne 0 ]
   ! grep -q "podman tag .*localhost/pr-agent:current" "$TMP/calls.log"
   [ ! -f "$TMP/state/deploy-state" ]
+}
+
+@test "self-refresh pulls the repo and re-syncs units BEFORE the image pull+deploy" {
+  unset DEPLOY_REFRESHED   # exercise the refresh + re-exec path
+  run bash "$BATS_TEST_DIRNAME/../deploy.sh"
+  [ "$status" -eq 0 ]
+  # repo refresh happened
+  grep -q "git --git-dir.*fetch\|git -C .* fetch --depth 1 origin production" "$TMP/calls.log" \
+    || grep -q "git -C" "$TMP/calls.log"
+  grep -q "fetch --depth 1 origin production" "$TMP/calls.log"
+  grep -q "reset --hard FETCH_HEAD" "$TMP/calls.log"
+  # ...and the deploy still proceeded afterwards (re-exec ran the real deploy logic)
+  grep -q "podman tag ghcr.io/thejustinwalsh/pr-agent:v0.37.0 localhost/pr-agent:current" "$TMP/calls.log"
+  # ordering: the fetch precedes the image pull
+  fetch_line="$(grep -n 'fetch --depth 1 origin production' "$TMP/calls.log" | head -1 | cut -d: -f1)"
+  pull_line="$(grep -n 'podman pull ghcr.io/thejustinwalsh/pr-agent:v0.37.0' "$TMP/calls.log" | head -1 | cut -d: -f1)"
+  [ "$fetch_line" -lt "$pull_line" ]
+}
+
+@test "self-refresh failure does not block the deploy" {
+  unset DEPLOY_REFRESHED
+  # make git fail so fetch/reset error out
+  cat > "$BIN/git" <<'EOF'
+#!/usr/bin/env bash
+echo "git $*" >> "$TMP_LOG"
+exit 1
+EOF
+  chmod +x "$BIN/git"
+  run bash "$BATS_TEST_DIRNAME/../deploy.sh"
+  [ "$status" -eq 0 ]
+  # deploy still happened despite the refresh failing
+  grep -q "podman tag ghcr.io/thejustinwalsh/pr-agent:v0.37.0 localhost/pr-agent:current" "$TMP/calls.log"
 }

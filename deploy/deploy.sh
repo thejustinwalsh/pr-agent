@@ -8,8 +8,10 @@
 # --rollback can retarget :current without re-querying ghcr.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/.." && pwd)"
 # shellcheck source=/dev/null
 source "$HERE/config.env"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-production}"
 STATE_DIR="${DEPLOY_STATE_DIR:-$DATA_MOUNT}"
 STATE="$STATE_DIR/deploy-state"
 mkdir -p "$STATE_DIR"
@@ -121,7 +123,33 @@ do_rollback() {
   log "rollback complete"
 }
 
+# Pull the latest deploy scripts + units before deploying. cloud-init only clones
+# the repo once, so without this the box runs frozen scripts. Best-effort: a
+# transient git failure must NOT block an image deploy. Quadlet/service/timer units
+# live as copies under ~/.config (separate from the repo), so re-sync them too;
+# daemon-reload picks up unit changes on the next run.
+self_refresh() {
+  log "refresh: fetching $DEPLOY_BRANCH"
+  if git -C "$REPO_ROOT" fetch --depth 1 origin "$DEPLOY_BRANCH" \
+     && git -C "$REPO_ROOT" reset --hard FETCH_HEAD; then
+    log "refresh: repo at $(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+    cdir="$HOME/.config/containers/systemd"; udir="$HOME/.config/systemd/user"
+    mkdir -p "$cdir" "$udir"
+    cp "$REPO_ROOT"/deploy/quadlet/*.pod "$REPO_ROOT"/deploy/quadlet/*.container "$cdir"/ 2>/dev/null || true
+    cp "$REPO_ROOT"/deploy/quadlet/*.timer "$REPO_ROOT"/deploy/quadlet/*.service "$udir"/ 2>/dev/null || true
+    systemctl --user daemon-reload 2>/dev/null || true
+  else
+    log "WARNING: refresh failed; proceeding with the on-box scripts"
+  fi
+}
+
 main() {
+  # Self-update: refresh scripts/units, then re-exec the freshly-pulled deploy.sh
+  # ONCE so the new logic runs the actual pull+deploy (the guard env prevents a loop).
+  if [ -z "${DEPLOY_REFRESHED:-}" ] && [ "${DEPLOY_SKIP_REFRESH:-}" != "1" ]; then
+    self_refresh
+    exec env DEPLOY_REFRESHED=1 bash "$HERE/deploy.sh" "$@"
+  fi
   if [ "${1:-}" = "--rollback" ]; then do_rollback; return; fi
   local cur new; cur="$(current_tag)"; new="$(latest_remote_tag)"
   [ -n "$new" ] || { log "no remote tags found"; exit 1; }
