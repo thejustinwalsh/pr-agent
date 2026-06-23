@@ -142,3 +142,10 @@ Format: `## YYYY-MM-DD — title` / **Context** / **Decision** / **Affected** / 
 - **Verified live:** forced a re-deploy of v0.37.1 through the fixed path on the box — pod + both containers active, in-pod webhook 200, https://pr-agent.tjw.dev/ 200, ledger CURRENT=v0.37.1, zero downtime.
 - **Operational note:** the box does NOT auto-pull the repo (cloud-init clones once), so deploy-script changes require `git -C ~pragent/pr-agent fetch --depth 1 origin production && git reset --hard FETCH_HEAD` on the box. Applied for this fix. A repo-refresh step in the deploy timer is a sensible follow-up.
 - **Affected:** `deploy/deploy.sh`, `deploy/tests/deploy.bats`.
+
+## 2026-06-23 — Deploy timer self-refreshes the repo + units before pull/deploy
+- **Gap:** cloud-init clones the repo once; nothing updated it, so the box ran frozen deploy scripts/units (this is exactly why the pod-aware deploy fix had to be pulled by hand).
+- **Decision:** `deploy.sh` now self-refreshes at the start of `main()`: `git fetch --depth 1 origin $DEPLOY_BRANCH` (default `production`) + `reset --hard FETCH_HEAD`, re-sync the quadlet/systemd unit copies under `~/.config` (they are separate from the repo), `daemon-reload`, then `exec` the freshly-pulled `deploy.sh` once (guarded by `DEPLOY_REFRESHED` against a re-exec loop) so the NEW logic runs the pull + pod-aware swap + health gate. Best-effort — a transient git failure warns and proceeds with the on-box scripts rather than blocking a deploy. `DEPLOY_SKIP_REFRESH=1` opts out (local/manual runs).
+- **Verified live:** ran the timer entrypoint on the box — `refresh: repo at 03ca95e` → candidate v0.37.1 → smoke → deployed; pod + containers active, in-pod 200, https://pr-agent.tjw.dev/ 200, zero downtime. Future 04:00 runs now auto-pull script/unit changes (no more manual box pulls).
+- **Tests:** `deploy.bats` 8/8 (refresh-before-pull ordering; refresh-failure-non-blocking).
+- **Affected:** `deploy/deploy.sh`, `deploy/tests/deploy.bats`.
